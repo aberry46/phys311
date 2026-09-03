@@ -2,4 +2,6 @@ This week proved to me that I cannot trust a simulation simply because it looks 
 
 Because of the BONUS section of the lab, I had the opportunity to learn the importance of distinguishing numerical energy drift that is caused by the method used, counter to the physical energy ACTUALLY being lost due to forces (such as air resistance).
 
+Another thing I took away from this week was the idea of accuracy within simulation. I have had my fair share of simulation software and tools over the years, but I never really took the time to think about what is actually happening behind the scenes. As previously mentioned, the convergence study made the process of "choosing the right method" far easier and allowed me to visualize the necessity for the reduction of the time step function (as it provides more data to work with overall). I definitely believe that it was useful to see that there is ultimately a tradeoff between accuracy and computational cost, which imposes a greater question to the world of numerical physics: when is "enough"... enough?
+
 Overall, I found this week to be very engaging and I very much liked the process of "adding onto" my code, rather than restarting. I think this is the method the class is designed for, so huge shout-out to that! I am excited to begin diving into some harder content!
