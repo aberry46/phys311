@@ -2,4 +2,4 @@ In reflection of the past few weeks, the hardest concept for me was not found in
 
 In that same light, something that has clicked in this past week however was the idea of using conservation laws as a way to test the quality of a simulation. Tracking the total energy made it very clear how the Euler and Euler-Cromer methods behave differently over time. Moreover, I began to better understand the distinction between numerical energy drift and actual energy loss caused by something like air resistance. 
 
-Damping is something that I have faced quite frequently in electrical engineering and differential equations, so I am excited to explore it further!
+Finally, one thing that I am excited to explore further is damping. I have run into it quite frequently in electrical engineering and differential equations, so I am interested in officially adding it to my toolkit!
