@@ -1,0 +1,7 @@
+The hardest concept for me to wrap my head around this past week was how numerical integration techniques can impact the physical accuracy of a simulation. Prior to the start of this week, I understood how different methods can produce different amounts of error, but I hadn't fully come into appreciation of how significant those errors could ultimately be over an extended period of time. Particularly in looking at Euler's method during the orbital simulation, I was able to bare witness to its spiraling effect. This helped demonstrate how important the numerical method itself can be.
+
+Interestingly, something that clicked for me this past week was the relationship between conservation laws and a system's orbital stability. In comparing the Euler, Euler-Cromer, and Velocity Verlet methods, I was able to witness how a simulation can feel reasonable, but ultimately be flawed. Velocity Verlet was particularly interesting because it maintained a stable elliptical orbit and in so doing, with exteremely small errors.
+
+Furthermore, I enjoyed the verification side of Kepler's three laws. Counter to simply accepting the relationships, I was able to reproduce their behaviors within my own simulation. To that end, I enjoyed seeing the orbital period squared vs semi-major axis cubed plot follow the theoretical trends with an error of only 0.000085%!
+
+Overall, I believe this week allowed me to understand that a simulation is not exclusively to implement an idea, but it is also capable of verifying results and methods.
