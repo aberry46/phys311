@@ -1,8 +1,14 @@
 import { Vec2 } from './vec2.js';
 
 export class Body {
-  constructor({ mass = 1, pos = new Vec2(), vel = new Vec2(), radius = 0.25,
-                color = "#ff8200", fixed = false } = {}) {
+  constructor({
+    mass = 1,
+    pos = new Vec2(),
+    vel = new Vec2(),
+    radius = 0.25,
+    color = "#ff8200",
+    fixed = false
+  } = {}) {
     this.mass = mass;
     this.invMass = fixed ? 0 : 1 / mass;
     this.pos = pos.clone();
@@ -13,5 +19,18 @@ export class Body {
     this.color = color;
     this.fixed = fixed;
     this.trail = [];
+  }
+
+  // Supports the assignment's name for mass.
+  get m() {
+    return this.mass;
+  }
+
+  clearForce() {
+    this.force.zero();
+  }
+
+  kineticEnergy() {
+    return 0.5 * this.mass * this.vel.lengthSq();
   }
 }

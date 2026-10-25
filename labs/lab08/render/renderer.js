@@ -67,13 +67,25 @@ export function draw(ctx, canvas, world, hud) {
   }
 
   for (const b of world.bodies) {
-    // trail
-    if (b.trail.length > 1) {
-      ctx.strokeStyle = "rgba(255,130,0,0.45)"; ctx.lineWidth = 2;
+    // Fading trail: make older segments more transparent.
+    ctx.lineWidth = 2;
+
+    for (let i = 1; i < b.trail.length; i++) {
+      const alpha = i / (b.trail.length - 1);
+
+      ctx.strokeStyle = `rgba(255, 130, 0, ${alpha})`;
       ctx.beginPath();
-      ctx.moveTo(cam.toScreenX(b.trail[0].x), cam.toScreenY(b.trail[0].y));
-      for (let i = 1; i < b.trail.length; i++)
-        ctx.lineTo(cam.toScreenX(b.trail[i].x), cam.toScreenY(b.trail[i].y));
+
+      ctx.moveTo(
+        cam.toScreenX(b.trail[i - 1].x),
+        cam.toScreenY(b.trail[i - 1].y)
+      );
+
+      ctx.lineTo(
+        cam.toScreenX(b.trail[i].x),
+        cam.toScreenY(b.trail[i].y)
+      );
+
       ctx.stroke();
     }
     // body
@@ -92,23 +104,41 @@ export function draw(ctx, canvas, world, hud) {
   }
 
   // HUD
-  const drift = hud.E0 === 0 ? 0 : (world.totalEnergy() - hud.E0) / hud.E0;
+  const body = world.bodies[0];
+  const KE = world.kineticEnergy();
+  const PE = world.potentialEnergy();
+  const E = KE + PE;
+  const drift = hud.E0 === 0 ? 0 : (E - hud.E0) / hud.E0;
+
   const lines = [
-    "t      = " + world.time.toFixed(4) + " s",
-    "steps  = " + world.steps,
-    "fps    = " + hud.fps.toFixed(0) + "   (steps/frame " + hud.lastSteps + ")",
-    "DT     = 1/" + hud.dtDenom + " s",
+    "t      = " + world.time.toFixed(3) + " s",
+    "x      = " + body.pos.x.toFixed(3) + " m",
+    "y      = " + body.pos.y.toFixed(3) + " m",
+    "|v|    = " + body.vel.length().toFixed(3) + " m/s",
+    "KE     = " + KE.toFixed(3) + " J",
+    "PE     = " + PE.toFixed(3) + " J",
+    "E_total= " + E.toFixed(3) + " J",
     "method = " + hud.method,
-    "E      = " + world.totalEnergy().toFixed(6) + " J",
-    "dE/E0  = " + (drift >= 0 ? "+" : "") + drift.toExponential(3)
+    "mode   = " + (hud.mode ?? "fixed"),
+    "dt used= " + (hud.lastDt ?? 0).toFixed(5) + " s",
+    "max|dE/E0| = " + (hud.maxEnergyError ?? 0).toExponential(3),
+    "dE/E0  = " + drift.toExponential(3)
   ];
-  ctx.font = "13px monospace"; ctx.textBaseline = "top";
-  ctx.fillStyle = "rgba(0,0,0,0.65)";
+
+  ctx.font = "13px monospace";
+  ctx.textAlign = "left";
+  ctx.textBaseline = "top";
+
+  ctx.fillStyle = "rgba(0,0,0,0.75)";
   ctx.fillRect(8, 8, 250, lines.length * 18 + 14);
+
   for (let i = 0; i < lines.length; i++) {
-    ctx.fillStyle = (i === lines.length - 1)
-      ? (Math.abs(drift) > 0.01 ? "#f48771" : "#4ec9b0") : "#d4d4d4";
+    ctx.fillStyle = i === lines.length - 1
+      ? (Math.abs(drift) > 0.01 ? "#f48771" : "#4ec9b0")
+      : "#d4d4d4";
+
     ctx.fillText(lines[i], 18, 16 + i * 18);
   }
+
   ctx.textBaseline = "alphabetic";
 }

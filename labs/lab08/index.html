@@ -25,7 +25,7 @@
   </label>
   <label>Scene
     <select id="scene">
-      <option value="projectile">Projectile (v0=25, 45&deg;)</option>
+      <option value="projectile">Projectile (v0=20 m/s, 50&deg;)</option>
       <option value="spring">Spring oscillator (m=k=1)</option>
     </select>
   </label>
@@ -39,6 +39,15 @@
   </label>
   <button id="pause">Pause</button>
   <button id="reset">Reset</button>
+  <label>Timestep mode
+    <select id="timestepMode">
+     <option value="fixed">Fixed</option>
+      <option value="variable">Variable</option>
+    </select>
+  </label>
+
+  <button id="lag">Induce 250 ms lag</button>
+  <button id="partA">Part A: Coordinate Test</button>
   <button class="alt" id="validate">Validate at t = 2.0 s</button>
 </div>
 

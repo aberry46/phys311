@@ -26,9 +26,9 @@ function makeIntegrator(name) {
   return new VelocityVerlet();
 }
 
-function buildProjectile(integratorName) {
+function buildProjectile(integratorName, v0 = 20, angleDeg = 50) {
   const w = new World(makeIntegrator(integratorName));
-  const v0 = 25, th = 45 * Math.PI / 180;
+  const th = angleDeg * Math.PI / 180;
   w.add(new Body({
     mass: 1, radius: 0.35, color: "#ff8200",
     pos: new Vec2(0, 0),
@@ -58,6 +58,7 @@ function buildScene(sceneName, integratorName) {
 }
 
 function resetSim() {
+  showPartA = false;
   const sceneName = document.getElementById("scene").value;
   const method    = document.getElementById("integrator").value;
   dtDenom = parseInt(document.getElementById("dt").value, 10);
@@ -75,42 +76,88 @@ function frame(nowMs) {
   let frameTime = now - lastTime;
   lastTime = now;
 
-  if (frameTime > 0) fpsEMA = 0.9 * fpsEMA + 0.1 * (1 / frameTime);
-  hud.fps = fpsEMA;
+  if (frameTime > 0) {
+    fpsEMA = 0.9 * fpsEMA + 0.1 * (1 / frameTime);
+  }
 
-  if (frameTime > MAX_FRAME) frameTime = MAX_FRAME;
+  // Apply the same frame-time clamp in both modes.
+  frameTime = Math.max(0, Math.min(frameTime, MAX_FRAME));
+
+  const mode = document.getElementById("timestepMode").value;
+  hud.mode = mode;
+  hud.fps = fpsEMA;
+  hud.maxEnergyError = hud.maxEnergyError ?? 0;
+  hud.lastDt = hud.lastDt ?? 0;
 
   let n = 0;
-  if (!paused) {
-    accumulator += frameTime;
-    while (accumulator >= DT) {
-      world.step(DT);
-      accumulator -= DT;
-      n++;
-      if (world.steps % 4 === 0) {
-        const b = world.bodies[0];
-        b.trail.push(b.pos.clone());
-        if (b.trail.length > 600) b.trail.shift();
+
+  function advance(dt) {
+    world.step(dt);
+    n++;
+    hud.lastDt = dt;
+
+    const b = world.bodies[0];
+    b.trail.push(b.pos.clone());
+
+    if (b.trail.length > 200) {
+      b.trail.shift();
+    }
+
+    const relativeError = hud.E0 === 0
+      ? 0
+      : Math.abs((world.totalEnergy() - hud.E0) / hud.E0);
+
+    hud.maxEnergyError = Math.max(
+      hud.maxEnergyError,
+      relativeError
+    );
+
+    if (world.meta.kind === "projectile" && b.pos.y < 0) {
+      paused = true;
+      document.getElementById("pause").textContent = "Resume";
+    }
+  }
+
+  if (!paused && !showPartA) {
+    if (mode === "fixed") {
+      accumulator += frameTime;
+
+      while (accumulator >= DT) {
+        advance(DT);
+        accumulator -= DT;
+
+        if (paused) break;
       }
-      if (world.meta.kind === "projectile" && world.bodies[0].pos.y < 0) {
-        paused = true;
-        document.getElementById("pause").textContent = "Resume";
-        break;
+    } else {
+      // One physics step using the measured frame duration.
+      accumulator = 0;
+
+      if (frameTime > 0) {
+        advance(frameTime);
       }
     }
   }
+
   hud.lastSteps = n;
 
-  draw(ctx, canvas, world, hud);
+  if (showPartA) {
+    drawPartA();
+  } else {
+    draw(ctx, canvas, world, hud);
+  }
+
   requestAnimationFrame(frame);
 }
 
 // Logging Helpers & Validation Suite
 function clearLog() { logEl.textContent = ""; }
 function say(s, cls) {
+  console.log(s);
+
   const span = document.createElement("span");
   if (cls) span.className = cls;
-  span.textContent = s + "";
+
+  span.textContent = s + "\n";
   logEl.appendChild(span);
   logEl.scrollTop = logEl.scrollHeight;
 }
@@ -136,14 +183,17 @@ function vec2SelfTest() {
     say((pass ? "  PASS  " : "  FAIL  ") + name.padEnd(16) + "= " + got.padEnd(30) +
         (pass ? "" : " expected " + want), pass ? "ok" : "bad");
   }
-  say(allPass ? "  -> all Vec2 operations agree with Python exactly."
+  say(allPass ? "  -> all tested Vec2 operations match the expected values."
               : "  -> MISMATCH: fix Vec2 before trusting anything downstream.",
       allPass ? "ok" : "bad");
   say("");
 }
 
 function runHeadless(sceneName, method, dt, tEnd) {
-  const w = buildScene(sceneName, method);
+   // Keep validation button, only checking 25 m/s, 45 deg reference.
+  const w = sceneName === "projectile"
+    ? buildProjectile(method, 25, 45)
+    : buildSpring(method);
   const E0 = w.totalEnergy();
   let Emin = E0, Emax = E0;
   while (w.time < tEnd - 1e-12) {
@@ -290,7 +340,7 @@ document.getElementById("reset").addEventListener("click", () => {
   document.getElementById("pause").textContent = "Pause";
 });
 
-for (const id of ["integrator", "scene", "dt"]) {
+for (const id of ["integrator", "scene", "dt", "timestepMode"]) {
   document.getElementById(id).addEventListener("change", () => {
     resetSim();
     paused = false;
@@ -303,6 +353,147 @@ document.getElementById("validate").addEventListener("click", validate);
 window.addEventListener("keydown", (e) => {
   if (e.code === "Space") { e.preventDefault(); document.getElementById("pause").click(); }
   if (e.key === "r" || e.key === "R") document.getElementById("reset").click();
+});
+
+// Part A: static coordinate-system demonstration
+let showPartA = false;
+
+function drawPartA() {
+  // 60 pixels represents 1 meter.
+  // The physics origin is near the bottom-left of the canvas.
+  const cam = new Camera(60, 60, canvas.height - 60);
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.font = "12px monospace";
+  ctx.textBaseline = "alphabetic";
+  ctx.textAlign = "center";
+
+  const originX = cam.toScreenX(0);
+  const originY = cam.toScreenY(0);
+
+  // Horizontal axis: ground at y = 0.
+  ctx.strokeStyle = "#28a745";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(originX, originY);
+  ctx.lineTo(canvas.width - 20, originY);
+  ctx.stroke();
+
+  // Vertical axis: positive y points upward.
+  ctx.strokeStyle = "#cccccc";
+  ctx.beginPath();
+  ctx.moveTo(originX, originY);
+  ctx.lineTo(originX, 20);
+  ctx.stroke();
+
+  // Tick marks and numeric labels every 1 meter along x.
+  ctx.fillStyle = "#eeeeee";
+  for (let x = 0; cam.toScreenX(x) <= canvas.width - 30; x++) {
+    const px = cam.toScreenX(x);
+
+    ctx.beginPath();
+    ctx.moveTo(px, originY - 5);
+    ctx.lineTo(px, originY + 5);
+    ctx.stroke();
+
+    ctx.fillText(String(x), px, originY + 20);
+  }
+
+  // Tick marks and numeric labels every 1 meter along y.
+  ctx.textAlign = "right";
+  for (let y = 1; cam.toScreenY(y) >= 30; y++) {
+    const py = cam.toScreenY(y);
+
+    ctx.beginPath();
+    ctx.moveTo(originX - 5, py);
+    ctx.lineTo(originX + 5, py);
+    ctx.stroke();
+
+    ctx.fillText(String(y), originX - 10, py + 4);
+  }
+
+  // Required circle: center (2, 3) m, radius 0.3 m.
+  const center = new Vec2(2, 3);
+  const px = cam.toScreenX(center.x);
+  const py = cam.toScreenY(center.y);
+
+  ctx.fillStyle = "#ff8200";
+  ctx.beginPath();
+  ctx.arc(px, py, cam.toScreenLen(0.3), 0, 2 * Math.PI);
+  ctx.fill();
+
+  // Scene labels.
+  ctx.textAlign = "left";
+  ctx.fillStyle = "#eeeeee";
+  ctx.fillText("(2, 3) m; radius = 0.3 m", px + 25, py);
+  ctx.fillText("y (m)", originX + 10, 25);
+  ctx.fillText("x (m)", canvas.width - 55, originY + 40);
+  ctx.fillText("Scale: 60 pixels per meter", 300, 30);
+}
+
+document.getElementById("partA").addEventListener("click", () => {
+  showPartA = true;
+  paused = true;
+  document.getElementById("pause").textContent = "Resume";
+
+  console.log("Part A coordinate check:");
+  console.log("Scale: 60 pixels/m");
+  console.log("Circle center: 120 pixels right of the origin");
+  console.log("Circle center: 180 pixels above the ground");
+  console.log("Circle radius: 18 pixels");
+});
+
+// Reset returns to the animated simulation.
+document.getElementById("reset").addEventListener("click", () => {
+  showPartA = false;
+});
+
+// C1: comparison against our Lab 7 Python engine.
+function runC1() {
+  const dt = 1 / 120;
+  const steps = 240;
+
+  // Explicitly use the assignment's launch conditions.
+  const testWorld = buildProjectile("verlet", 20, 50);
+
+  // No rendering, frame timing, or ground-stop condition.
+  for (let i = 0; i < steps; i++) {
+    testWorld.step(dt);
+  }
+
+  const body = testWorld.bodies[0];
+
+  const results = {
+    x: body.pos.x,
+    y: body.pos.y,
+    vx: body.vel.x,
+    vy: body.vel.y,
+    E_total: testWorld.totalEnergy()
+  };
+
+  console.log("C1: JAVASCRIPT RESULTS");
+  console.log("Steps:", steps);
+  console.log("Simulated time:", steps * dt, "s");
+
+  for (const [quantity, value] of Object.entries(results)) {
+    console.log(quantity + " = " + value.toPrecision(17));
+  }
+
+  return results;
+}
+
+// Allow the test to be called from the browser Console.
+window.runC1 = runC1;
+
+document.getElementById("lag").addEventListener("click", () => {
+  if (paused || showPartA) return;
+
+  // Deliberately block the browser briefly for the C2 experiment.
+  const start = performance.now();
+
+  while (performance.now() - start < 250) {
+    // Intentional busy-wait.
+  }
 });
 
 // Start application
