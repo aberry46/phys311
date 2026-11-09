@@ -1,3 +1,4 @@
+
 # PHYS 311: Lab 10 - Interactive Simulation
 
 ## Overview
@@ -22,9 +23,7 @@ The simulation includes pause/resume, single-step, reset, speed adjustment, and 
 
 Single-step advances the simulation by exactly one fixed timestep:
 
-\[
-\Delta t = \frac{1}{240} \approx 0.004167 \text{ s}
-\]
+Δt = 1/240 ≈ 0.004167 s
 
 Simulation speed is adjusted through the accumulator rather than changing the timestep. This preserves consistency in the numerical integration.
 
@@ -46,15 +45,11 @@ The spring stiffness was limited to 40 N/m to reduce the possibility of numerica
 
 The approximate stability condition for a simple spring-mass oscillator is:
 
-\[
-\Delta t < 2\sqrt{\frac{m}{k}}
-\]
+Δt < 2√(m/k)
 
 Using m = 1 kg and k = 40 N/m:
 
-\[
-\Delta t < 0.316 \text{ s}
-\]
+Δt < 2√(1/40) = 0.316 s
 
 The simulation uses a fixed timestep of approximately 0.004167 s, which is substantially smaller than this limit. Although the full spring network contains multiple oscillation modes, the chosen range provides a reasonable operating range and was tested at its maximum value.
 
