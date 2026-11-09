@@ -1,0 +1,218 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: #0f172a;
+  color: #e2e8f0;
+  font: 15px system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+h1 {
+  margin: 0 0 14px;
+  font-size: 23px;
+}
+
+h3 {
+  margin-bottom: 12px;
+}
+
+/* ==========================================
+   CONTROL PANEL
+   ========================================== */
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.controls label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+select,
+button {
+  background: #1e293b;
+  color: white;
+  border: 1px solid #64748b;
+  border-radius: 5px;
+  padding: 7px;
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:hover {
+  background: #334155;
+}
+
+input[type="range"] {
+  width: 100px;
+  accent-color: #38bdf8;
+}
+
+input[type="checkbox"] {
+  accent-color: #38bdf8;
+}
+
+/* Keyboard focus visibility */
+
+button:focus-visible,
+select:focus-visible,
+input:focus-visible {
+  outline: 3px solid #facc15;
+  outline-offset: 3px;
+}
+
+/* ==========================================
+   SIMULATION LAYOUT
+   ========================================== */
+
+.stage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+canvas {
+  display: block;
+  max-width: 100%;
+  border: 1px solid #475569;
+  border-radius: 6px;
+}
+
+/* Main simulation canvas */
+
+#simulation {
+  width: 100%;
+  max-width: 1000px;
+  height: auto;
+  aspect-ratio: 1000 / 630;
+
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* ==========================================
+   CONSERVATION HUD
+   ========================================== */
+
+#hud {
+  margin: 0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 14px;
+
+  line-height: 1.7;
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+
+  max-width: 100%;
+}
+
+/* ==========================================
+   ENERGY GRAPH
+   ========================================== */
+
+#energy-panel {
+  margin-top: 20px;
+  max-width: 1000px;
+}
+
+#energy-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1000 / 180;
+
+  border: 1px solid #64748b;
+  border-radius: 6px;
+}
+
+#energy-panel[hidden] {
+  display: none;
+}
+
+/* ==========================================
+   STATUS AND TEXT
+   ========================================== */
+
+.note,
+#status {
+  color: #cbd5e1;
+}
+
+/* ==========================================
+   MOBILE RESPONSIVENESS
+   ========================================== */
+
+@media (max-width: 700px) {
+  body {
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  h1 {
+    font-size: 20px;
+  }
+
+  .controls {
+    gap: 12px;
+  }
+
+  .controls label {
+    flex-wrap: wrap;
+  }
+
+  input[type="range"] {
+    width: 130px;
+  }
+
+  button,
+  select {
+    min-height: 40px;
+  }
+
+  .stage {
+    flex-direction: column;
+  }
+
+  #simulation {
+    width: 100%;
+  }
+
+  #hud {
+    width: 100%;
+    font-size: 11px;
+  }
+
+  #energy-panel {
+    width: 100%;
+  }
+}
+
+/* ==========================================
+   REDUCED MOTION
+   ========================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

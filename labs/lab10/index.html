@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <title>PHYS 311 | Lab 10</title>
+
+  <link rel="stylesheet" href="./style.css">
+</head>
+
+<body>
+
+  <h1>PHYS 311: Interactive Multi-Body Simulation</h1>
+
+  <p>
+    This interactive physics sandbox demonstrates how forces,
+    collisions, and numerical integration affect the motion
+    of objects. Explore four different physical systems,
+    adjust parameters, and observe changes in energy and
+    momentum conservation.
+
+    In the Billiards scene, drag existing bodies to apply
+    forces or launch new bodies using the slingshot.
+    Use the visualization controls to examine motion
+    trails, velocity vectors, and energy over time.
+  </p>
+  
+  <!-- SIMULATION CONTROLS -->
+
+  <div class="controls">
+
+    <label for="scene">Scene</label>
+    <select id="scene">
+      <option value="billiards">Billiards</option>
+      <option value="jitter">Jitter Guard Test</option>
+      <option value="orbits">N-Body Gravity</option>
+      <option value="springs">Spring Network</option>
+    </select>
+
+    <label for="integrator">Integrator</label>
+    <select id="integrator">
+      <option value="verlet">Velocity Verlet</option>
+      <option value="cromer">Euler-Cromer</option>
+      <option value="euler">Euler</option>
+    </select>
+
+    <label for="restitution">
+      Restitution:
+      <span id="restitution-label">1.00</span>
+    </label>
+    <input
+      id="restitution"
+      type="range"
+      min="0"
+      max="1"
+      step="0.05"
+      value="1"
+    >
+
+    <label for="count">
+      Ball Count:
+      <span id="count-label">20</span>
+    </label>
+    <input
+      id="count"
+      type="range"
+      min="20"
+      max="200"
+      step="10"
+      value="20"
+    >
+
+    <label for="gravity">
+      Gravity Strength (G):
+      <span id="gravity-label">1.00</span>
+    </label>
+    <input
+      id="gravity"
+      type="range"
+      min="0.1"
+      max="2"
+      step="0.1"
+      value="1"
+    >
+
+    <label for="stiffness">
+      Spring Stiffness (k):
+      <span id="stiffness-label">8 N/m</span>
+    </label>
+    <input
+      id="stiffness"
+      type="range"
+      min="1"
+      max="40"
+      step="1"
+      value="8"
+    >
+
+    <label for="speed">
+      Simulation Speed:
+      <span id="speed-label">1.00×</span>
+    </label>
+    <input
+      id="speed"
+      type="range"
+      min="0.25"
+      max="2"
+      step="0.25"
+      value="1"
+    >
+
+    <label for="guard">
+      <input id="guard" type="checkbox" checked>
+      Jitter Guard
+    </label>
+
+    <!-- PLAYBACK CONTROLS -->
+
+    <button id="pause" type="button">Pause</button>
+    <button id="step" type="button">Step</button>
+    <button id="reset" type="button">Reset</button>
+    <button id="report" type="button">Log Measurements</button>
+
+    <!-- PHYSICS VISUALIZATIONS -->
+
+    <label for="show-trails">
+      <input id="show-trails" type="checkbox" checked>
+      Motion Trails
+    </label>
+
+    <label for="show-velocity">
+      <input id="show-velocity" type="checkbox">
+      Velocity Vectors
+    </label>
+
+    <label for="show-energy">
+      <input id="show-energy" type="checkbox" checked>
+      Energy Graph
+    </label>
+
+  </div>
+
+  <!-- KEYBOARD SHORTCUTS -->
+
+  <p>
+    <strong>Keyboard Shortcuts:</strong>
+    Space = Pause/Resume |
+    . = Single Step |
+    R = Reset |
+    + / - = Speed
+  </p>
+
+  <!-- INTERACTION INSTRUCTIONS -->
+
+  <p>
+    <strong>Mouse / Touch Controls:</strong>
+    In the Billiards scene, select and drag an existing
+    body to apply a spring force. Click an empty area
+    and drag backward to aim a new projectile.
+    Release to launch.
+  </p>
+
+  <!-- MAIN SIMULATION -->
+
+  <div class="stage">
+
+    <canvas
+      id="simulation"
+      width="1000"
+      height="630"
+    >
+      Interactive two-dimensional physics simulation
+      showing moving bodies, collisions, gravitational
+      interactions, and spring forces.
+    </canvas>
+
+    <pre id="hud"></pre>
+
+  </div>
+
+  <!-- LIVE ENERGY GRAPH -->
+
+  <div id="energy-panel">
+
+    <h3>System Energy Over Time</h3>
+
+    <canvas
+      id="energy-chart"
+      width="1000"
+      height="180"
+    >
+      Live graph displaying total mechanical energy
+      as a function of simulation time.
+    </canvas>
+
+  </div>
+
+  <!-- STATUS DISPLAY -->
+
+  <p id="status">Starting simulation...</p>
+
+  <!-- JAVASCRIPT -->
+
+  <script type="module" src="./main.js"></script>
+
+</body>
+</html>
