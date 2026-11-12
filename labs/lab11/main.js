@@ -464,8 +464,6 @@ function reset() {
 
   if (scene === 'slingshot') {
   world = makeSlingshot();
-  } else if (scene === 'blocktest') {
-  world = makeRotatingBlockTest();
   } else if (scene === 'orbits') {
   world = makeOrbits();
   } else if (scene === 'springs') {

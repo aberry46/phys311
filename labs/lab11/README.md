@@ -1,55 +1,86 @@
-# PHYS 311: Lab 10 - Interactive Physics Simulation
+# PHYS 311: Slingshot Destruction
 
 ## Overview
 
-An interactive 2D physics sandbox developed in JavaScript. Users can explore collisions, gravitational interactions, spring forces, and numerical integration through four simulation scenes.
+Slingshot Destruction is a 2D physics-based game inspired by Angry Birds. Players launch projectiles into wooden block structures to knock down targets. The simulation demonstrates projectile motion, momentum transfer, rotational dynamics, and collision physics.
 
-## Physics Implemented
+This project builds on the JavaScript physics engine developed in Labs 9 and 10.
 
-- Euler, Euler-Cromer, and Velocity Verlet integration
-- Elastic and inelastic collisions
-- Newtonian gravitational interactions
-- Hooke's law and spring oscillations
-- Energy and momentum diagnostics
-- Fixed timestep of 1/240 seconds
+## Physics Concepts
 
-## Controls
+The simulation incorporates:
 
-| Control | Function |
-|---|---|
-| Space | Pause / Resume |
-| Period (.) | Single physics step |
-| R | Reset simulation |
-| + / - | Adjust simulation speed |
-| Integrator dropdown | Select numerical method |
-| Restitution slider | Adjust collision elasticity |
-| Gravity slider | Adjust gravitational strength |
-| Spring slider | Adjust spring stiffness |
-| Ball count slider | Change number of bodies |
-| Drag existing ball | Apply a spring force |
-| Drag from empty space | Slingshot launch |
-| Visualization checkboxes | Toggle trails, velocity vectors, and energy graph |
+- Projectile motion under gravity
+- Conservation of linear and angular momentum
+- Collision impulses and restitution
+- Torque and rotational motion
+- Moment of inertia for rectangular bodies
+- Friction and energy dissipation
+- Numerical integration using Velocity Verlet
 
-Dragging and slingshot launching are available in the Billiards scene.
+The primary new feature is rotational collision response for rectangular rigid bodies.
 
-## Validation
+## Current Features
 
-The Billiards simulation was tested for 60 seconds using Velocity Verlet integration and a restitution coefficient of 1.00.
+- Drag-and-release slingshot with adjustable launch power
+- Rotating rectangular blocks
+- Circle-to-circle, circle-to-rectangle, and rectangle-to-rectangle collisions
+- Gravity, ground contact, and friction
+- Target detection
+- Motion trails and physics diagnostics
+- Pause, reset, and simulation speed controls
 
-- Initial energy: 59.400000 J
-- Final energy: 59.400000 J
-- Relative energy difference: 0.000000% at reported precision
+## Running the Simulation
 
-Robustness tests included maximum slider settings, rapid body manipulation, repeated resets, and window resizing. No failures were observed during these tests.
+Open `index.html` using VS Code Live Server or access the simulation through GitHub Pages.
+
+Select **Slingshot Destruction**, drag the projectile backward from the launcher, and release to fire.
+
+## Module 11: Risk Prototype
+
+The standalone prototype tests rotational collision behavior and numerical conservation laws.
+
+Files:
+- `PROPOSAL.md`: Final project proposal and development plan
+- `spike/spike.js`: Numerical collision experiments
+- `spike/output.txt`: Recorded test results
+- `spike/FINDINGS.md`: Prototype findings and scope decisions
+
+Run the prototype using:
+
+```bash
+cd labs/lab11/spike
+node spike.js
+```
+
+### Numerical Results
+
+| Test | Result |
+|------|--------|
+| Centered impact | 0 rad/s angular velocity |
+| Off-center impact | -3.912436 rad/s |
+| Linear momentum error | ≤ 1.776 × 10⁻¹⁵ kg·m/s |
+| Angular momentum error | 0 |
+| Elastic collision energy error | 0 J |
+| Inelastic collision energy loss | 26.199348 J |
+| Resting-contact corrections | 2,390 over 2,400 steps |
 
 ## Known Limitations
 
-- The simulation operates in two dimensions.
-- Rotational motion is not modeled.
-- Slingshot trajectory previews do not account for collisions.
-- Body dragging and launching require mouse or touch input.
-- At sufficiently high velocities, discrete collision detection may miss contacts.
+Stacked blocks may experience jitter or instability during repeated collisions. The current solver uses approximate contact resolution and requires further improvements for reliable structural stacking.
 
-## Documentation
+The full game also includes inelastic collisions and friction, so mechanical energy is not expected to remain constant.
 
-See [Lab 10 Report](lab10_report.md) for implementation details, physics analysis, and testing results.
+## Next Steps
+
+During Weeks 12–13, development will focus on:
+
+- Improving resting-contact stability
+- Refining collapsible structures
+- Expanding gameplay and target objectives
+- Completing numerical validation
+- Preparing the final project documentation
+
+## Repository
+
+[PHYS 311 GitHub Repository](https://github.com/aberry46/phys311)
