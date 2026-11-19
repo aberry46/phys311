@@ -7,14 +7,17 @@ import { eventToWorld } from './input.js';
 // ==========================================
 
 export class MouseSpring {
+
   constructor() {
     this.body = null;
     this.target = null;
+
     this.k = 180;
     this.c = 20;
   }
 
   apply(world) {
+
     if (!this.body || !this.target) return;
     if (!world.bodies.includes(this.body)) return;
     if (this.body.isStatic) return;
@@ -24,18 +27,22 @@ export class MouseSpring {
     const dx = this.target.x - b.pos.x;
     const dy = this.target.y - b.pos.y;
 
-    b.force.x += b.m * (this.k * dx - this.c * b.vel.x);
-    b.force.y += b.m * (this.k * dy - this.c * b.vel.y);
+    b.force.x +=
+      b.m * (this.k * dx - this.c * b.vel.x);
+
+    b.force.y +=
+      b.m * (this.k * dy - this.c * b.vel.y);
   }
 
   release() {
+
     this.body = null;
     this.target = null;
   }
 }
 
 // ==========================================
-// POINTER INTERACTIONS
+// INTERACTION SYSTEM
 // ==========================================
 
 export function setupInteractions(
@@ -45,36 +52,53 @@ export function setupInteractions(
   getScene,
   onLaunch
 ) {
+
   const spring = new MouseSpring();
 
   let aimStart = null;
   let aimEnd = null;
   let pointerId = null;
 
-  // ==========================================
-  // SLINGSHOT SETTINGS
-  // ==========================================
+  let keyboardAiming = false;
+
+  // ========================================
+  // LAUNCH CONFIGURATION
+  // ========================================
 
   const MAX_DRAG = 2.5;
   const LAUNCH_SCALE = 7;
-  const MAX_LAUNCH_SPEED = MAX_DRAG * LAUNCH_SCALE;
+
+  const MAX_LAUNCH_SPEED =
+    MAX_DRAG * LAUNCH_SCALE;
+
+  const PROJECTILE_RADIUS = 0.25;
+  const PROJECTILE_MASS = 1;
+
   const GRAVITY = 9.81;
 
-  // ==========================================
-  // LIMIT SLINGSHOT PULLBACK
-  // ==========================================
+  let launchAngle = 35;
+  let launchPower = 0.8;
 
-  function clampSlingshotDrag(launcher, pointer) {
+  // ========================================
+  // LIMIT PULLBACK
+  // ========================================
+
+  function clampSlingshotDrag(
+    launcher,
+    pointer
+  ) {
+
     let dx = pointer.x - launcher.x;
     let dy = pointer.y - launcher.y;
 
-    // Only allow pulling backward
     dx = Math.min(0, dx);
 
     const distance = Math.hypot(dx, dy);
 
     if (distance > MAX_DRAG) {
+
       const factor = MAX_DRAG / distance;
+
       dx *= factor;
       dy *= factor;
     }
@@ -85,11 +109,12 @@ export function setupInteractions(
     };
   }
 
-  // ==========================================
+  // ========================================
   // RESET INTERACTION
-  // ==========================================
+  // ========================================
 
   function resetInteraction() {
+
     spring.release();
 
     if (
@@ -102,48 +127,91 @@ export function setupInteractions(
     aimStart = null;
     aimEnd = null;
     pointerId = null;
+
+    keyboardAiming = false;
   }
 
   function attachToWorld(world) {
+
     resetInteraction();
+
+    launchAngle = 35;
+    launchPower = 0.8;
+
     world.addForce(spring);
   }
 
-  // ==========================================
-  // FIND BODY UNDER CURSOR
-  // ==========================================
+  // ========================================
+  // BODY SELECTION
+  // ========================================
 
   function bodyAt(world, pos) {
-    for (let i = world.bodies.length - 1; i >= 0; i--) {
+
+    for (
+      let i = world.bodies.length - 1;
+      i >= 0;
+      i--
+    ) {
+
       const b = world.bodies[i];
 
       if (b.isStatic) continue;
 
-      const dx = b.pos.x - pos.x;
-      const dy = b.pos.y - pos.y;
+      const dx = pos.x - b.pos.x;
+      const dy = pos.y - b.pos.y;
 
-      const radius = Math.max(b.radius, 0.25);
+      if (b.shape === 'rectangle') {
 
-      if (dx * dx + dy * dy <= radius * radius) {
-        return b;
+        const c = Math.cos(b.angle);
+        const s = Math.sin(b.angle);
+
+        const localX = c * dx + s * dy;
+        const localY = -s * dx + c * dy;
+
+        if (
+          Math.abs(localX) <= b.width / 2 &&
+          Math.abs(localY) <= b.height / 2
+        ) {
+          return b;
+        }
+
+      } else {
+
+        const radius = Math.max(
+          b.radius,
+          0.25
+        );
+
+        if (
+          dx * dx + dy * dy <=
+          radius * radius
+        ) {
+          return b;
+        }
       }
     }
 
     return null;
   }
 
-  // ==========================================
-  // CALCULATE LAUNCH VELOCITY
-  // ==========================================
+  // ========================================
+  // COMPUTE LAUNCH VELOCITY
+  // ========================================
 
   function launchVelocity(start, end) {
-    let vx = (start.x - end.x) * LAUNCH_SCALE;
-    let vy = (start.y - end.y) * LAUNCH_SCALE;
+
+    let vx =
+      (start.x - end.x) * LAUNCH_SCALE;
+
+    let vy =
+      (start.y - end.y) * LAUNCH_SCALE;
 
     const speed = Math.hypot(vx, vy);
 
     if (speed > MAX_LAUNCH_SPEED) {
-      const factor = MAX_LAUNCH_SPEED / speed;
+
+      const factor =
+        MAX_LAUNCH_SPEED / speed;
 
       vx *= factor;
       vy *= factor;
@@ -152,490 +220,846 @@ export function setupInteractions(
     return { vx, vy };
   }
 
-  // ==========================================
-  // POINTER DOWN
-  // ==========================================
+  // ========================================
+  // LAUNCH PROJECTILE
+  // ========================================
 
-  canvas.addEventListener('pointerdown', event => {
-    if (!renderer.camera) return;
-    if (pointerId !== null) return;
+  function launchProjectile(world, vx, vy) {
 
-    const scene = getScene();
+    if (!world.launcher) return false;
+
+    const speed = Math.hypot(vx, vy);
+
+    if (speed < 0.5) return false;
+
+    if (speed > MAX_LAUNCH_SPEED) {
+
+      const factor =
+        MAX_LAUNCH_SPEED / speed;
+
+      vx *= factor;
+      vy *= factor;
+    }
+
+    world.add(new Body({
+
+      shape: 'circle',
+
+      x: world.launcher.x,
+      y: world.launcher.y,
+
+      vx,
+      vy,
+
+      m: PROJECTILE_MASS,
+
+      radius: PROJECTILE_RADIUS,
+
+      color: '#38bdf8'
+
+    }));
+
+    onLaunch();
+
+    return true;
+  }
+
+  // ========================================
+  // KEYBOARD AIMING
+  // ========================================
+
+  function updateKeyboardAim() {
+
     const world = getWorld();
 
-    const pos = eventToWorld(
-      event,
-      canvas,
-      renderer.camera
-    );
+    if (!world?.launcher) return;
 
-    // ----------------------------------------
-    // SLINGSHOT MODE
-    // ----------------------------------------
+    const angle =
+      launchAngle * Math.PI / 180;
 
-    if (scene === 'slingshot') {
-      const launcher = world.launcher;
+    const distance =
+      launchPower * MAX_DRAG;
 
-      if (!launcher) return;
+    aimStart = {
+      ...world.launcher
+    };
 
-      const distance = Math.hypot(
-        pos.x - launcher.x,
-        pos.y - launcher.y
-      );
+    aimEnd = {
 
-      // Must click near the launcher
-      if (distance > 0.75) return;
+      x: aimStart.x -
+        distance * Math.cos(angle),
 
-      event.preventDefault();
+      y: aimStart.y -
+        distance * Math.sin(angle)
+    };
 
-      spring.release();
+    keyboardAiming = true;
+  }
 
-      aimStart = { ...launcher };
-      aimEnd = clampSlingshotDrag(launcher, pos);
+  // ========================================
+  // KEYBOARD INPUT
+  // ========================================
 
-      pointerId = event.pointerId;
-      canvas.setPointerCapture(pointerId);
+  window.addEventListener(
+    'keydown',
 
-      return;
-    }
+    event => {
 
-    // ----------------------------------------
-    // BILLIARDS MODE
-    // ----------------------------------------
+      if (getScene() !== 'slingshot') {
+        return;
+      }
 
-    if (scene !== 'billiards') return;
+      const tag = event.target.tagName;
 
-    const body = bodyAt(world, pos);
+      if (
+        tag === 'INPUT' ||
+        tag === 'SELECT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'BUTTON' ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey
+      ) {
+        return;
+      }
 
-    pointerId = event.pointerId;
-    canvas.setPointerCapture(pointerId);
+      if (pointerId !== null) return;
 
-    if (body) {
-      spring.body = body;
-      spring.target = pos;
+      const world = getWorld();
 
-      aimStart = null;
-      aimEnd = null;
-    } else {
-      spring.release();
+      if (!world?.launcher) return;
 
-      aimStart = pos;
-      aimEnd = pos;
-    }
-  });
+      switch (event.code) {
 
-  // ==========================================
-  // POINTER MOVE
-  // ==========================================
+        // Increase launch angle
+        case 'KeyW':
 
-  canvas.addEventListener('pointermove', event => {
-    if (event.pointerId !== pointerId) return;
-    if (!renderer.camera) return;
+          event.preventDefault();
 
-    const pos = eventToWorld(
-      event,
-      canvas,
-      renderer.camera
-    );
+          launchAngle = Math.min(
+            85,
+            launchAngle + 2
+          );
 
-    // Move grabbed body
-    if (spring.body) {
-      spring.target = pos;
-    }
+          updateKeyboardAim();
 
-    // Update aiming
-    if (aimStart) {
-      if (getScene() === 'slingshot') {
-        aimEnd = clampSlingshotDrag(
-          aimStart,
-          pos
-        );
-      } else {
-        aimEnd = pos;
+          break;
+
+        // Decrease launch angle
+        case 'KeyS':
+
+          event.preventDefault();
+
+          launchAngle = Math.max(
+            0,
+            launchAngle - 2
+          );
+
+          updateKeyboardAim();
+
+          break;
+
+        // Decrease launch power
+        case 'KeyA':
+
+          event.preventDefault();
+
+          launchPower = Math.max(
+            0.05,
+            launchPower - 0.05
+          );
+
+          updateKeyboardAim();
+
+          break;
+
+        // Increase launch power
+        case 'KeyD':
+
+          event.preventDefault();
+
+          launchPower = Math.min(
+            1,
+            launchPower + 0.05
+          );
+
+          updateKeyboardAim();
+
+          break;
+
+        // Launch
+        case 'Enter':
+
+          event.preventDefault();
+
+          if (event.repeat) return;
+
+          updateKeyboardAim();
+
+          const velocity = launchVelocity(
+            aimStart,
+            aimEnd
+          );
+
+          launchProjectile(
+            world,
+            velocity.vx,
+            velocity.vy
+          );
+
+          resetInteraction();
+
+          break;
+
+        // Cancel aiming
+        case 'Escape':
+
+          event.preventDefault();
+
+          resetInteraction();
+
+          break;
       }
     }
-  });
+  );
 
-  // ==========================================
-  // POINTER UP
-  // ==========================================
+  // ========================================
+  // POINTER DOWN
+  // ========================================
 
-  canvas.addEventListener('pointerup', event => {
-    if (event.pointerId !== pointerId) return;
+  canvas.addEventListener(
+    'pointerdown',
 
-    // Use final release position when available
-    if (renderer.camera && aimStart) {
+    event => {
+
+      if (!renderer.camera) return;
+      if (pointerId !== null) return;
+
+      const scene = getScene();
+      const world = getWorld();
+
       const pos = eventToWorld(
         event,
         canvas,
         renderer.camera
       );
 
-      if (getScene() === 'slingshot') {
-        aimEnd = clampSlingshotDrag(aimStart, pos);
+      keyboardAiming = false;
+
+      // ------------------------------------
+      // SLINGSHOT
+      // ------------------------------------
+
+      if (scene === 'slingshot') {
+
+        const launcher = world.launcher;
+
+        if (!launcher) return;
+
+        const distance = Math.hypot(
+          pos.x - launcher.x,
+          pos.y - launcher.y
+        );
+
+        if (distance > 0.75) return;
+
+        event.preventDefault();
+
+        spring.release();
+
+        aimStart = { ...launcher };
+
+        aimEnd = clampSlingshotDrag(
+          launcher,
+          pos
+        );
+
+        pointerId = event.pointerId;
+
+        canvas.setPointerCapture(
+          pointerId
+        );
+
+        return;
+      }
+
+      // ------------------------------------
+      // BILLIARDS
+      // ------------------------------------
+
+      if (scene !== 'billiards') return;
+
+      const body = bodyAt(world, pos);
+
+      pointerId = event.pointerId;
+
+      canvas.setPointerCapture(
+        pointerId
+      );
+
+      if (body) {
+
+        spring.body = body;
+        spring.target = pos;
+
+        aimStart = null;
+        aimEnd = null;
+
       } else {
+
+        spring.release();
+
+        aimStart = pos;
         aimEnd = pos;
       }
     }
+  );
 
-    // ----------------------------------------
-    // SLINGSHOT LAUNCH
-    // ----------------------------------------
+  // ========================================
+  // POINTER MOVE
+  // ========================================
 
-    if (
-      getScene() === 'slingshot' &&
-      aimStart &&
-      aimEnd
-    ) {
-      const world = getWorld();
+  canvas.addEventListener(
+    'pointermove',
 
-      const v = launchVelocity(
-        aimStart,
-        aimEnd
+    event => {
+
+      if (
+        event.pointerId !== pointerId
+      ) return;
+
+      if (!renderer.camera) return;
+
+      const pos = eventToWorld(
+        event,
+        canvas,
+        renderer.camera
       );
 
-      const speed = Math.hypot(v.vx, v.vy);
+      if (spring.body) {
+        spring.target = pos;
+      }
 
-      if (speed > 0.5) {
-        world.add(new Body({
-          shape: 'circle',
+      if (aimStart) {
 
-          x: world.launcher.x,
-          y: world.launcher.y,
+        if (getScene() === 'slingshot') {
 
-          vx: v.vx,
-          vy: v.vy,
+          aimEnd = clampSlingshotDrag(
+            aimStart,
+            pos
+          );
 
-          m: 1,
-          radius: 0.25,
+        } else {
 
-          color: '#38bdf8'
-        }));
+          aimEnd = pos;
+        }
+      }
+    }
+  );
 
-        onLaunch();
+  // ========================================
+  // POINTER RELEASE
+  // ========================================
+
+  canvas.addEventListener(
+    'pointerup',
+
+    event => {
+
+      if (
+        event.pointerId !== pointerId
+      ) return;
+
+      if (
+        renderer.camera &&
+        aimStart
+      ) {
+
+        const pos = eventToWorld(
+          event,
+          canvas,
+          renderer.camera
+        );
+
+        if (getScene() === 'slingshot') {
+
+          aimEnd = clampSlingshotDrag(
+            aimStart,
+            pos
+          );
+
+        } else {
+
+          aimEnd = pos;
+        }
+      }
+
+      // ------------------------------------
+      // SLINGSHOT LAUNCH
+      // ------------------------------------
+
+      if (
+        getScene() === 'slingshot' &&
+        aimStart &&
+        aimEnd
+      ) {
+
+        const world = getWorld();
+
+        const v = launchVelocity(
+          aimStart,
+          aimEnd
+        );
+
+        launchProjectile(
+          world,
+          v.vx,
+          v.vy
+        );
+
+        resetInteraction();
+
+        return;
+      }
+
+      // ------------------------------------
+      // BILLIARDS LAUNCH
+      // ------------------------------------
+
+      if (
+        getScene() === 'billiards' &&
+        aimStart &&
+        aimEnd
+      ) {
+
+        const world = getWorld();
+
+        const v = launchVelocity(
+          aimStart,
+          aimEnd
+        );
+
+        if (
+          Math.hypot(v.vx, v.vy) > 0.1
+        ) {
+
+          const bounds = world.bounds;
+          const radius = 0.2;
+
+          const x = Math.max(
+            bounds.xMin + radius,
+
+            Math.min(
+              bounds.xMax - radius,
+              aimStart.x
+            )
+          );
+
+          const y = Math.max(
+            bounds.yMin + radius,
+
+            Math.min(
+              bounds.yMax - radius,
+              aimStart.y
+            )
+          );
+
+          world.add(new Body({
+
+            x,
+            y,
+
+            vx: v.vx,
+            vy: v.vy,
+
+            m: 1,
+            radius,
+
+            color: '#ffffff'
+          }));
+
+          onLaunch();
+        }
       }
 
       resetInteraction();
-      return;
     }
+  );
 
-    // ----------------------------------------
-    // BILLIARDS LAUNCH
-    // ----------------------------------------
+  // ========================================
+  // CANCEL POINTER INTERACTION
+  // ========================================
 
-    if (
-      getScene() === 'billiards' &&
-      aimStart &&
-      aimEnd
-    ) {
-      const world = getWorld();
+  canvas.addEventListener(
+    'pointercancel',
+
+    resetInteraction
+  );
+
+  // ========================================
+  // DRAW SLINGSHOT AND AIMING INFORMATION
+  // ========================================
+
+  function drawSlingshot(
+    ctx,
+    camera,
+    world
+  ) {
+
+    const launcher = world.launcher;
+
+    if (!launcher) return;
+
+    const sx = x => camera.toScreenX(x);
+    const sy = y => camera.toScreenY(y);
+
+    const x = sx(launcher.x);
+    const y = sy(launcher.y);
+
+    ctx.save();
+
+    // Wooden frame
+    ctx.strokeStyle = '#a67546';
+    ctx.lineWidth = 7;
+    ctx.lineCap = 'round';
+
+    ctx.beginPath();
+
+    ctx.moveTo(x, y + 35);
+    ctx.lineTo(x, y);
+    ctx.lineTo(x - 13, y - 20);
+
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 13, y - 20);
+
+    ctx.stroke();
+
+    // ======================================
+    // ACTIVE AIMING
+    // ======================================
+
+    if (aimStart && aimEnd) {
+
+      const radius = Math.abs(
+        sx(launcher.x + MAX_DRAG) - x
+      );
+
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1;
+
+      ctx.setLineDash([5, 5]);
+
+      ctx.beginPath();
+
+      ctx.arc(
+        x,
+        y,
+        radius,
+        0,
+        2 * Math.PI
+      );
+
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+
+      const px = sx(aimEnd.x);
+      const py = sy(aimEnd.y);
+
+      // Elastic bands
+      ctx.strokeStyle = '#c99a66';
+      ctx.lineWidth = 3;
+
+      ctx.beginPath();
+
+      ctx.moveTo(x - 13, y - 20);
+      ctx.lineTo(px, py);
+      ctx.lineTo(x + 13, y - 20);
+
+      ctx.stroke();
+
+      // Projectile
+      ctx.fillStyle = '#38bdf8';
+
+      ctx.beginPath();
+      ctx.arc(px, py, 10, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // ====================================
+      // LAUNCH INFORMATION
+      // ====================================
 
       const v = launchVelocity(
         aimStart,
         aimEnd
       );
 
-      if (Math.hypot(v.vx, v.vy) > 0.1) {
-        const bounds = world.bounds;
-        const radius = 0.2;
+      const speed = Math.hypot(
+        v.vx,
+        v.vy
+      );
 
-        const x = Math.max(
-          bounds.xMin + radius,
-          Math.min(
-            bounds.xMax - radius,
-            aimStart.x
-          )
+      const angle =
+        Math.atan2(v.vy, v.vx) *
+        180 / Math.PI;
+
+      const power =
+        100 * speed / MAX_LAUNCH_SPEED;
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '13px monospace';
+      ctx.textAlign = 'left';
+
+      ctx.fillText(
+        `Power: ${power.toFixed(0)}%`,
+        x - 35,
+        y - 80
+      );
+
+      ctx.fillText(
+        `Speed: ${speed.toFixed(2)} m/s`,
+        x - 35,
+        y - 63
+      );
+
+      ctx.fillText(
+        `Angle: ${angle.toFixed(1)}°`,
+        x - 35,
+        y - 46
+      );
+
+      if (keyboardAiming) {
+
+        ctx.fillStyle = '#facc15';
+
+        ctx.fillText(
+          'ENTER to launch',
+          x - 35,
+          y - 97
         );
-
-        const y = Math.max(
-          bounds.yMin + radius,
-          Math.min(
-            bounds.yMax - radius,
-            aimStart.y
-          )
-        );
-
-        world.add(new Body({
-          x,
-          y,
-
-          vx: v.vx,
-          vy: v.vy,
-
-          m: 1,
-          radius,
-
-          color: '#ffffff'
-        }));
-
-        onLaunch();
       }
+
+    } else {
+
+      // Resting elastic bands
+      ctx.strokeStyle = '#c99a66';
+      ctx.lineWidth = 3;
+
+      ctx.beginPath();
+
+      ctx.moveTo(x - 13, y - 20);
+      ctx.lineTo(x, y);
+      ctx.lineTo(x + 13, y - 20);
+
+      ctx.stroke();
+
+      // Loaded projectile
+      ctx.fillStyle = '#38bdf8';
+
+      ctx.beginPath();
+      ctx.arc(x, y, 10, 0, 2 * Math.PI);
+      ctx.fill();
+
+      // Keyboard instructions
+      ctx.fillStyle = '#cbd5e1';
+
+      ctx.font = '12px monospace';
+      ctx.textAlign = 'left';
+
+      ctx.fillText(
+        'Drag to aim or use WASD',
+        x - 35,
+        y - 45
+      );
+
+      ctx.fillText(
+        'ENTER to launch',
+        x - 35,
+        y - 60
+      );
     }
 
-    resetInteraction();
-  });
+    ctx.restore();
+  }
 
-  // ==========================================
-  // POINTER CANCEL
-  // ==========================================
+  // ========================================
+  // DRAW TRAJECTORY PREVIEW
+  // ========================================
 
-  canvas.addEventListener(
-    'pointercancel',
-    resetInteraction
-  );
+  function drawTrajectory(
+    ctx,
+    camera,
+    world
+  ) {
 
-  // ==========================================
-  // DRAW INTERACTION OVERLAYS
-  // ==========================================
+    if (!aimStart || !aimEnd) return;
+
+    const sx = x => camera.toScreenX(x);
+    const sy = y => camera.toScreenY(y);
+
+    const v = launchVelocity(
+      aimStart,
+      aimEnd
+    );
+
+    const isSlingshot =
+      getScene() === 'slingshot';
+
+    const previewDt = 0.05;
+
+    ctx.save();
+
+    // Billiards aiming line
+    if (!isSlingshot) {
+
+      ctx.strokeStyle = '#facc15';
+      ctx.lineWidth = 2;
+
+      ctx.beginPath();
+
+      ctx.moveTo(
+        sx(aimStart.x),
+        sy(aimStart.y)
+      );
+
+      ctx.lineTo(
+        sx(aimEnd.x),
+        sy(aimEnd.y)
+      );
+
+      ctx.stroke();
+    }
+
+    // Projectile trajectory
+    ctx.fillStyle = '#ffffff';
+
+    for (let i = 1; i <= 60; i++) {
+
+      const t = i * previewDt;
+
+      const x =
+        aimStart.x + v.vx * t;
+
+      let y =
+        aimStart.y + v.vy * t;
+
+      if (isSlingshot) {
+
+        y -= 0.5 * GRAVITY * t * t;
+
+        if (
+          Number.isFinite(world.groundY) &&
+          y < world.groundY +
+            PROJECTILE_RADIUS
+        ) {
+          break;
+        }
+      }
+
+      const bounds =
+        world.viewBounds ?? world.bounds;
+
+      if (
+        bounds &&
+        (
+          x < bounds.xMin ||
+          x > bounds.xMax ||
+          y < bounds.yMin ||
+          y > bounds.yMax
+        )
+      ) {
+        break;
+      }
+
+      ctx.beginPath();
+
+      ctx.arc(
+        sx(x),
+        sy(y),
+        2,
+        0,
+        2 * Math.PI
+      );
+
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  // ========================================
+  // DRAW ALL INTERACTION OVERLAYS
+  // ========================================
 
   function drawOverlay() {
+
     if (!renderer.camera) return;
 
     const ctx = canvas.getContext('2d');
     const camera = renderer.camera;
 
-    const sx = x => camera.toScreenX(x);
-    const sy = y => camera.toScreenY(y);
-
-    const scene = getScene();
     const world = getWorld();
+    const scene = getScene();
 
-    // ========================================
-    // DRAW SLINGSHOT
-    // ========================================
+    if (scene === 'slingshot') {
 
-    if (scene === 'slingshot' && world.launcher) {
-      const launcher = world.launcher;
-
-      const x = sx(launcher.x);
-      const y = sy(launcher.y);
-
-      ctx.save();
-
-      ctx.strokeStyle = '#a67546';
-      ctx.lineWidth = 7;
-      ctx.lineCap = 'round';
-
-      // Wooden frame
-      ctx.beginPath();
-
-      ctx.moveTo(x, y + 35);
-      ctx.lineTo(x, y);
-
-      ctx.lineTo(x - 13, y - 20);
-
-      ctx.moveTo(x, y);
-      ctx.lineTo(x + 13, y - 20);
-
-      ctx.stroke();
-
-      // --------------------------------------
-      // SHOW MAXIMUM PULLBACK AREA
-      // --------------------------------------
-
-      if (aimStart && aimEnd) {
-        const radius =
-          Math.abs(sx(launcher.x + MAX_DRAG) - x);
-
-        ctx.strokeStyle = '#38bdf8';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
-
-        ctx.beginPath();
-        ctx.arc(
-          x,
-          y,
-          radius,
-          0,
-          2 * Math.PI
-        );
-        ctx.stroke();
-
-        ctx.setLineDash([]);
-
-        // Elastic bands connected to projectile
-        const px = sx(aimEnd.x);
-        const py = sy(aimEnd.y);
-
-        ctx.strokeStyle = '#c99a66';
-        ctx.lineWidth = 3;
-
-        ctx.beginPath();
-
-        ctx.moveTo(x - 13, y - 20);
-        ctx.lineTo(px, py);
-
-        ctx.lineTo(x + 13, y - 20);
-
-        ctx.stroke();
-
-        // Pulled-back projectile
-        ctx.fillStyle = '#38bdf8';
-
-        ctx.beginPath();
-        ctx.arc(px, py, 10, 0, 2 * Math.PI);
-        ctx.fill();
-
-        // Power percentage
-        const dragDistance = Math.hypot(
-          aimStart.x - aimEnd.x,
-          aimStart.y - aimEnd.y
-        );
-
-        const power =
-          100 * dragDistance / MAX_DRAG;
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '13px monospace';
-        ctx.textAlign = 'left';
-
-        ctx.fillText(
-          `Power: ${power.toFixed(0)}%`,
-          x - 30,
-          y - 45
-        );
-
-      } else {
-        // Elastic band in resting position
-        ctx.strokeStyle = '#c99a66';
-        ctx.lineWidth = 3;
-
-        ctx.beginPath();
-        ctx.moveTo(x - 13, y - 20);
-        ctx.lineTo(x, y);
-        ctx.lineTo(x + 13, y - 20);
-        ctx.stroke();
-
-        // Loaded projectile
-        ctx.fillStyle = '#38bdf8';
-
-        ctx.beginPath();
-        ctx.arc(x, y, 10, 0, 2 * Math.PI);
-        ctx.fill();
-      }
-
-      ctx.restore();
+      drawSlingshot(
+        ctx,
+        camera,
+        world
+      );
     }
 
-    // ========================================
-    // DRAW MOUSE SPRING
-    // ========================================
-
+    // Mouse-controlled spring
     if (spring.body && spring.target) {
+
       ctx.save();
 
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
+
       ctx.setLineDash([6, 5]);
 
       ctx.beginPath();
 
       ctx.moveTo(
-        sx(spring.body.pos.x),
-        sy(spring.body.pos.y)
+        camera.toScreenX(
+          spring.body.pos.x
+        ),
+
+        camera.toScreenY(
+          spring.body.pos.y
+        )
       );
 
       ctx.lineTo(
-        sx(spring.target.x),
-        sy(spring.target.y)
+        camera.toScreenX(
+          spring.target.x
+        ),
+
+        camera.toScreenY(
+          spring.target.y
+        )
       );
 
       ctx.stroke();
-      ctx.restore();
-    }
-
-    // ========================================
-    // DRAW TRAJECTORY PREVIEW
-    // ========================================
-
-    if (aimStart && aimEnd) {
-      const v = launchVelocity(
-        aimStart,
-        aimEnd
-      );
-
-      const isSlingshot = scene === 'slingshot';
-      const previewDt = 0.05;
-
-      ctx.save();
-
-      // Draw launch direction for billiards
-      if (!isSlingshot) {
-        ctx.strokeStyle = '#facc15';
-        ctx.lineWidth = 2;
-
-        ctx.beginPath();
-
-        ctx.moveTo(
-          sx(aimStart.x),
-          sy(aimStart.y)
-        );
-
-        ctx.lineTo(
-          sx(aimEnd.x),
-          sy(aimEnd.y)
-        );
-
-        ctx.stroke();
-      }
-
-      // Trajectory dots
-      ctx.fillStyle = '#ffffff';
-
-      for (let i = 1; i <= 40; i++) {
-        const t = i * previewDt;
-
-        const x =
-          aimStart.x + v.vx * t;
-
-        let y =
-          aimStart.y + v.vy * t;
-
-        // Gravity affects slingshot trajectory
-        if (isSlingshot) {
-          y -= 0.5 * GRAVITY * t * t;
-
-          // Stop preview below the ground
-          if (
-            Number.isFinite(world.groundY) &&
-            y < world.groundY + 0.25
-          ) {
-            break;
-          }
-        }
-
-        // Stop if outside visible horizontal bounds
-        const bounds = world.viewBounds ?? world.bounds;
-
-        if (
-          bounds &&
-          (x < bounds.xMin || x > bounds.xMax)
-        ) {
-          break;
-        }
-
-        ctx.beginPath();
-
-        ctx.arc(
-          sx(x),
-          sy(y),
-          2,
-          0,
-          2 * Math.PI
-        );
-
-        ctx.fill();
-      }
 
       ctx.restore();
     }
+
+    drawTrajectory(
+      ctx,
+      camera,
+      world
+    );
   }
 
-  // ==========================================
-  // PUBLIC INTERACTION METHODS
-  // ==========================================
+  // ========================================
+  // PUBLIC METHODS
+  // ========================================
 
   return {
+
     attachToWorld,
     drawOverlay,
     resetInteraction

@@ -1,3 +1,4 @@
+
 import { Body } from './engine/body.js';
 import { Gravity, NewtonGravity, Spring } from './engine/forces.js';
 import { Euler, EulerCromer, VelocityVerlet } from './engine/integrators.js';
@@ -7,6 +8,25 @@ import { HUD } from './render/hud.js';
 import { setupPointerInput } from './input.js';
 import { setupInteractions } from './interaction.js';
 import { EnergyChart } from './render/energy-chart.js';
+
+// ==========================================
+// CONFIGURATION
+// ==========================================
+
+const DT = 1 / 240;
+
+const G = 9.81;
+const GROUND_Y = -4.5;
+const CONTACT_ITERATIONS = 8;
+
+const colors = [
+  '#f97316',
+  '#38bdf8',
+  '#a78bfa',
+  '#4ade80',
+  '#f472b6',
+  '#facc15'
+];
 
 // ==========================================
 // INITIALIZATION
@@ -23,8 +43,10 @@ const pointer = setupPointerInput(canvas, {
 
 const sceneSelect = document.querySelector('#scene');
 const integratorSelect = document.querySelector('#integrator');
+
 const restitutionInput = document.querySelector('#restitution');
 const countInput = document.querySelector('#count');
+
 const countLabel = document.querySelector('#count-label');
 const restLabel = document.querySelector('#restitution-label');
 
@@ -44,12 +66,11 @@ const showTrails = document.querySelector('#show-trails');
 const showVelocity = document.querySelector('#show-velocity');
 const showEnergy = document.querySelector('#show-energy');
 const energyPanel = document.querySelector('#energy-panel');
+const guardInput = document.querySelector('#guard');
 
 const energyChart = new EnergyChart(
   document.querySelector('#energy-chart')
 );
-
-const DT = 1 / 240;
 
 let world;
 let paused = false;
@@ -60,18 +81,12 @@ let fps = 60;
 let physicsMs = 0;
 let renderMs = 0;
 
-let didLog60 = false;
 let speed = 1;
 let physicsStepCount = 0;
+let didLog60 = false;
 
-const colors = [
-  '#f97316',
-  '#38bdf8',
-  '#a78bfa',
-  '#4ade80',
-  '#f472b6',
-  '#facc15'
-];
+let shotsFired = 0;
+let previousTargetsHit = 0;
 
 // ==========================================
 // VISUALIZATION SETTINGS
@@ -88,9 +103,20 @@ function updateVisualSettings() {
   }
 }
 
-showTrails.addEventListener('change', updateVisualSettings);
-showVelocity.addEventListener('change', updateVisualSettings);
-showEnergy.addEventListener('change', updateVisualSettings);
+showTrails.addEventListener(
+  'change',
+  updateVisualSettings
+);
+
+showVelocity.addEventListener(
+  'change',
+  updateVisualSettings
+);
+
+showEnergy.addEventListener(
+  'change',
+  updateVisualSettings
+);
 
 updateVisualSettings();
 
@@ -111,20 +137,61 @@ function integrator() {
 }
 
 // ==========================================
+// BLOCK CONSTRUCTION
+// ==========================================
+
+function addBlock(
+  world,
+  x,
+  y,
+  width,
+  height,
+  mass,
+  color = '#c68c53'
+) {
+  return world.add(new Body({
+    shape: 'rectangle',
+    x,
+    y,
+    width,
+    height,
+    m: mass,
+    color
+  }));
+}
+
+// ==========================================
+// TARGET CONSTRUCTION
+// ==========================================
+
+function addTarget(world, x, y, radius = 0.35) {
+  return world.add(new Body({
+    shape: 'circle',
+    x,
+    y,
+    radius,
+    m: 1,
+    isStatic: true,
+    isTarget: true,
+    color: '#ef4444'
+  }));
+}
+
+// ==========================================
 // SCENE: SLINGSHOT DESTRUCTION
 // ==========================================
 
 function makeSlingshot() {
+
   const w = new World({
     integrator: integrator(),
-    restitution: Math.min(
-      parseFloat(restitutionInput.value),
-      0.35
+    restitution: parseFloat(
+      restitutionInput.value
     ),
-    pairCollisions: true
+    pairCollisions: true,
+    contactIterations: CONTACT_ITERATIONS
   });
 
-  // Simulation viewing area
   w.viewBounds = {
     xMin: -10,
     xMax: 10,
@@ -132,83 +199,111 @@ function makeSlingshot() {
     yMax: 6
   };
 
-  // Ground position
-  w.groundY = -4.5;
+  w.groundY = GROUND_Y;
 
-  // Earth gravity
-  w.addForce(new Gravity(9.81));
+  w.addForce(new Gravity(G));
 
-  // Slingshot position
   w.launcher = {
-    x: -7,
-    y: -3.3
+  x: -7,
+  y: GROUND_Y + 0.6
   };
 
-  // First wooden block
-  w.add(new Body({
-    shape: 'rectangle',
-    x: 3,
-    y: -3.5,
-    width: 1,
-    height: 2,
-    m: 3,
-    color: '#c68c53'
-  }));
+  // ========================================
+  // COLLAPSIBLE STRUCTURE
+  // ========================================
 
-  // Second wooden block
-  w.add(new Body({
-    shape: 'rectangle',
-    x: 5,
-    y: -3.5,
-    width: 1,
-    height: 2,
-    m: 3,
-    color: '#d7a36c'
-  }));
+  // Left supporting column
+  addBlock(
+    w,
+    3.0,
+    GROUND_Y + 1,
+    0.8,
+    2.0,
+    3,
+    '#c68c53'
+  );
 
-  // Target, resting at ground level
-  w.add(new Body({
-    shape: 'circle',
-    x: 7,
-    y: -4.15,
-    radius: 0.35,
-    m: 1,
-    isStatic: true,
-    isTarget: true,
-    color: '#ef4444'
-  }));
+  // Right supporting column
+  addBlock(
+    w,
+    5.0,
+    GROUND_Y + 1,
+    0.8,
+    2.0,
+    3,
+    '#c68c53'
+  );
+
+  // Horizontal beam
+  addBlock(
+    w,
+    4.0,
+    GROUND_Y + 2.25,
+    3.2,
+    0.5,
+    3,
+    '#d7a36c'
+  );
+
+  // ========================================
+  // TARGETS
+  // ========================================
+
+  // Target underneath the structure
+  addTarget(
+    w,
+    4.0,
+    GROUND_Y + 0.35
+  );
+
+  // Target behind the structure
+  addTarget(
+    w,
+    7.0,
+    GROUND_Y + 0.35
+  );
 
   return w;
 }
 
 // ==========================================
-// SCENE A: BILLIARDS
+// SCENE: BILLIARDS
 // ==========================================
 
 function makeBilliards() {
   const w = new World({
     integrator: integrator(),
+
     bounds: {
       xMin: -10,
       xMax: 10,
       yMin: -6,
       yMax: 6
     },
-    restitution: parseFloat(restitutionInput.value)
+
+    restitution: parseFloat(
+      restitutionInput.value
+    )
   });
 
   const count = parseFloat(countInput.value);
+  const columns = 20;
+  const rows = Math.ceil(count / columns);
 
   for (let i = 0; i < count; i++) {
-    const columns = 20;
+
     const row = Math.floor(i / columns);
     const col = i % columns;
-    const rows = Math.ceil(count / columns);
 
-    const x = -9.2 + (col + 0.5) * (18.4 / columns);
-    const y = -5.2 + (row + 0.5) * (10.4 / rows);
+    const x =
+      -9.2 + (col + 0.5) * (18.4 / columns);
 
-    const angle = (i * 2.39996) % (2 * Math.PI);
+    const y =
+      -5.2 + (row + 0.5) * (10.4 / rows);
+
+    const angle =
+      (i * 2.39996) % (2 * Math.PI);
+
     const v = 1.8 + (i % 5) * 0.3;
 
     w.add(new Body({
@@ -226,7 +321,7 @@ function makeBilliards() {
 }
 
 // ==========================================
-// SCENE B: JITTER GUARD
+// SCENE: JITTER GUARD
 // ==========================================
 
 function makeJitterTest() {
@@ -267,7 +362,7 @@ function makeJitterTest() {
 }
 
 // ==========================================
-// SCENE C: N-BODY GRAVITY
+// SCENE: N-BODY GRAVITY
 // ==========================================
 
 function makeOrbits() {
@@ -295,6 +390,7 @@ function makeOrbits() {
   }));
 
   for (let i = 0; i < 4; i++) {
+
     const r = i < 2 ? 3.5 : 5.5;
 
     const theta =
@@ -318,7 +414,7 @@ function makeOrbits() {
 }
 
 // ==========================================
-// SCENE D: SPRING NETWORK
+// SCENE: SPRING NETWORK
 // ==========================================
 
 function makeSprings() {
@@ -376,7 +472,45 @@ function makeSprings() {
 }
 
 // ==========================================
-// DIRECT MANIPULATION
+// RESET ENERGY BASELINE
+// ==========================================
+
+function resetMeasurements() {
+  hud.reset(world);
+
+  energyChart.reset();
+  energyChart.record(world);
+}
+
+// ==========================================
+// GAME STATUS
+// ==========================================
+
+function updateGameStatus() {
+
+  if (sceneSelect.value !== 'slingshot') {
+    return;
+  }
+
+  const targets = world.targetStatus();
+
+  if (targets.complete) {
+    status.textContent =
+      `ALL TARGETS DESTROYED! | ` +
+      `Shots fired: ${shotsFired} | ` +
+      `Press R to restart`;
+
+    return;
+  }
+
+  status.textContent =
+    `Targets: ${targets.hit}/${targets.total} | ` +
+    `Shots fired: ${shotsFired} | ` +
+    `Drag and release to launch`;
+}
+
+// ==========================================
+// DIRECT INTERACTIONS
 // ==========================================
 
 const interactions = setupInteractions(
@@ -384,166 +518,230 @@ const interactions = setupInteractions(
   renderer,
   () => world,
   () => sceneSelect.value,
+
   () => {
-    // New bodies add energy to the simulation.
-    hud.reset(world);
 
-    // Restart the graph at the new energy baseline.
-    energyChart.reset();
-    energyChart.record(world);
+    resetMeasurements();
 
-    status.textContent = 'New body launched';
+    if (sceneSelect.value === 'slingshot') {
+      shotsFired++;
+      updateGameStatus();
+    } else {
+      status.textContent = 'New body launched';
+    }
   }
 );
+
+// ==========================================
+// REMOVE ESCAPED PROJECTILES
+// ==========================================
+
+function removeEscapedProjectiles() {
+
+  if (sceneSelect.value !== 'slingshot') {
+    return;
+  }
+
+  const previousCount = world.bodies.length;
+
+  world.bodies = world.bodies.filter(body => {
+
+    // Preserve targets and rectangular blocks.
+    if (
+      body.isStatic ||
+      body.isTarget ||
+      body.shape === 'rectangle'
+    ) {
+      return true;
+    }
+
+    return (
+      body.pos.x > -25 &&
+      body.pos.x < 25 &&
+      body.pos.y > -15 &&
+      body.pos.y < 40
+    );
+  });
+
+  // Removing a body changes system energy.
+  if (world.bodies.length !== previousCount) {
+    resetMeasurements();
+  }
+}
+
+// ==========================================
+// PROJECTILE AND TARGET UPDATES
+// ==========================================
+
+function updateSlingshot() {
+
+  if (sceneSelect.value !== 'slingshot') {
+    return;
+  }
+
+  removeEscapedProjectiles();
+
+  const targets = world.targetStatus();
+
+  if (targets.hit !== previousTargetsHit) {
+
+    previousTargetsHit = targets.hit;
+
+    updateGameStatus();
+
+    console.log(
+      `Targets destroyed: ` +
+      `${targets.hit}/${targets.total}`
+    );
+  }
+}
 
 // ==========================================
 // RECORD PHYSICS DATA
 // ==========================================
 
 function recordPhysicsData() {
+
   physicsStepCount++;
 
-  // Record motion trails every four physics steps.
+  // Record motion trails and energy.
   if (physicsStepCount % 4 === 0) {
-    for (const b of world.bodies) {
-      if (!b.trail) {
-        b.trail = [];
+
+    for (const body of world.bodies) {
+
+      if (!body.trail) {
+        body.trail = [];
       }
 
-      b.trail.push([b.pos.x, b.pos.y]);
+      body.trail.push([
+        body.pos.x,
+        body.pos.y
+      ]);
 
-      if (b.trail.length > 120) {
-        b.trail.shift();
+      if (body.trail.length > 120) {
+        body.trail.shift();
       }
     }
-  }
 
-  // Record energy every four physics steps.
-  if (physicsStepCount % 4 === 0) {
     energyChart.record(world);
   }
 
-  // Log a quantitative result after 60 seconds.
-  
+  updateSlingshot();
+
+  // Record a quantitative measurement
+  // after 60 simulation seconds.
   if (!didLog60 && world.time >= 60) {
+
     didLog60 = true;
 
-    const initialEnergy = hud.initialEnergy;
-    const finalEnergy = world.totalEnergy();
+    const E0 = hud.initialEnergy;
+    const E = world.totalEnergy();
 
     const energyError =
-      initialEnergy !== 0
-        ? 100 * Math.abs(finalEnergy - initialEnergy) /
-          Math.abs(initialEnergy)
+      Math.abs(E0) > 1e-12
+        ? 100 * Math.abs(E - E0) /
+          Math.abs(E0)
         : 0;
 
-    const result = {
+    console.table({
       scene: sceneSelect.value,
-      time: world.time.toFixed(4),
+      time: world.time,
       integrator: integratorSelect.value,
       restitution: world.restitution,
-      initialEnergy: initialEnergy.toFixed(6),
-      finalEnergy: finalEnergy.toFixed(6),
-      energyErrorPercent: energyError.toFixed(6),
-      finalMomentum: world.totalMomentum()
-    };
-
-    console.table(result);
-
-    status.textContent =
-      `60-second validation: Energy difference = ` +
-      `${energyError.toFixed(6)}%`;
+      initialEnergy: E0,
+      finalEnergy: E,
+      energyDifferencePercent: energyError,
+      momentum: world.totalMomentum(),
+      angularMomentum: world.totalAngularMomentum()
+    });
   }
 }
+
 // ==========================================
 // RESET
 // ==========================================
 
 function reset() {
+
   const scene = sceneSelect.value;
 
   if (scene === 'slingshot') {
-  world = makeSlingshot();
+    world = makeSlingshot();
+
   } else if (scene === 'orbits') {
-  world = makeOrbits();
+    world = makeOrbits();
+
   } else if (scene === 'springs') {
     world = makeSprings();
+
   } else if (scene === 'jitter') {
     world = makeJitterTest();
+
   } else {
     world = makeBilliards();
   }
 
   accumulator = 0;
   previousFrame = null;
-  didLog60 = false;
   physicsStepCount = 0;
+  didLog60 = false;
 
-  // Attach the interaction force.
+  shotsFired = 0;
+  previousTargetsHit = 0;
+
   interactions.attachToWorld(world);
 
-  // Reset diagnostics.
-  hud.reset(world);
+  resetMeasurements();
 
-  // Reset energy chart.
-  energyChart.reset();
-  energyChart.record(world);
+  paused = false;
+  pauseButton.textContent = 'Pause';
 
-  // Jitter guard test.
+  status.style.whiteSpace = '';
+
+  if (scene === 'slingshot') {
+    updateGameStatus();
+    return;
+  }
+
   if (scene === 'jitter') {
-    world.jitterGuard =
-      document.querySelector('#guard').checked;
 
-    const before = world.bodies.map(b => b.vel.x);
+    world.jitterGuard = guardInput.checked;
+
+    const before = world.bodies.map(
+      body => body.vel.x
+    );
 
     world.step(DT);
     recordPhysicsData();
-    energyChart.record(world);
 
-    const after = world.bodies.map(b => b.vel.x);
+    const after = world.bodies.map(
+      body => body.vel.x
+    );
 
     paused = true;
     pauseButton.textContent = 'Resume';
 
-    const guarded = world.jitterGuard;
-    const reversed = after[0] > 0 && after[1] < 0;
-
-    const outcome = guarded
-      ? 'Guard ON: separating velocities preserved'
-      : reversed
-        ? 'Guard OFF: incorrect impulse reversed velocities'
-        : 'Guard OFF: no reversal detected';
-
     status.style.whiteSpace = 'pre-wrap';
 
     status.textContent =
-      `JITTER GUARD TEST\n${outcome}\n` +
-      `Left ball: ${before[0].toFixed(2)} -> ${after[0].toFixed(2)} m/s\n` +
-      `Right ball: ${before[1].toFixed(2)} -> ${after[1].toFixed(2)} m/s\n` +
-      'Paused after one physics step.';
+      `JITTER GUARD TEST\n` +
+      `Left: ${before[0].toFixed(2)} -> ` +
+      `${after[0].toFixed(2)} m/s\n` +
+      `Right: ${before[1].toFixed(2)} -> ` +
+      `${after[1].toFixed(2)} m/s`;
 
-    console.table({
-      guard: guarded,
-      leftBefore: before[0],
-      leftAfter: after[0],
-      rightBefore: before[1],
-      rightAfter: after[1],
-      outcome
-    });
-
-  } else {
-    paused = false;
-    pauseButton.textContent = 'Pause';
-    status.style.whiteSpace = '';
-    status.textContent = 'Scene ready';
+    return;
   }
+
+  status.textContent = 'Scene ready';
 }
 
 // ==========================================
-// PAUSE AND SINGLE STEP
+// PAUSE
 // ==========================================
 
 function togglePause() {
+
   paused = !paused;
 
   if (paused) {
@@ -554,190 +752,212 @@ function togglePause() {
     paused ? 'Resume' : 'Pause';
 }
 
+// ==========================================
+// SINGLE TIMESTEP
+// ==========================================
+
 function singleStep() {
+
   if (!paused) return;
 
-  world.jitterGuard =
-    document.querySelector('#guard').checked;
+  world.jitterGuard = guardInput.checked;
 
-  // Advance exactly one fixed timestep.
   world.step(DT);
 
   recordPhysicsData();
 
-  // Always record the new energy for a manual step.
   energyChart.record(world);
 
   accumulator = 0;
 
   status.textContent =
-    `Single step: t = ${world.time.toFixed(6)} s`;
+    `Single step: t = ` +
+    `${world.time.toFixed(6)} s`;
 }
 
 // ==========================================
-// SPEED CONTROL
+// SIMULATION SPEED
 // ==========================================
 
 function setSpeed(value) {
+
   speed = Math.max(
     0.25,
     Math.min(2, value)
   );
 
   speedInput.value = speed;
-  speedLabel.textContent = `${speed.toFixed(2)}×`;
+
+  speedLabel.textContent =
+    `${speed.toFixed(2)}×`;
 }
 
 // ==========================================
-// ANIMATION LOOP
+// MAIN ANIMATION LOOP
 // ==========================================
 
 function frame(timestamp) {
+
   if (previousFrame === null) {
     previousFrame = timestamp;
   }
 
+  const elapsed =
+    (timestamp - previousFrame) / 1000;
+
   const frameSeconds = Math.min(
-    (timestamp - previousFrame) / 1000,
+    elapsed,
     0.05
   );
 
   previousFrame = timestamp;
 
-  if (frameSeconds > 0) {
-    fps = 0.9 * fps + 0.1 / frameSeconds;
+  if (elapsed > 0) {
+    fps = 0.9 * fps + 0.1 / elapsed;
   }
+
+  // ========================================
+  // FIXED TIMESTEP PHYSICS
+  // ========================================
 
   const physicsStart = performance.now();
 
   if (!paused) {
-    // Change simulation speed without changing DT.
+
     accumulator += frameSeconds * speed;
 
     let steps = 0;
 
-    while (accumulator >= DT && steps < 30) {
-      world.jitterGuard =
-        document.querySelector('#guard').checked;
+    while (
+      accumulator >= DT &&
+      steps < 30
+    ) {
+
+      world.jitterGuard = guardInput.checked;
 
       world.step(DT);
 
       accumulator -= DT;
+
       steps++;
 
-      // Update trails, energy, and diagnostics.
       recordPhysicsData();
     }
 
-    // Prevent excessive backlog.
     if (steps === 30) {
       accumulator = 0;
     }
   }
 
-  physicsMs = performance.now() - physicsStart;
+  physicsMs =
+    performance.now() - physicsStart;
+
+  // ========================================
+  // RENDERING
+  // ========================================
 
   const renderStart = performance.now();
 
-  // Draw the main simulation.
   renderer.draw(world);
 
-  // Draw interaction guides.
   interactions.drawOverlay();
 
-  // ========================================
-  // POINTER CROSSHAIR AND COORDINATES
-  // ========================================
-
+  // Pointer coordinates
   if (pointer.active && renderer.camera) {
+
     const ctx = canvas.getContext('2d');
 
-    const px = renderer.camera.toScreenX(pointer.x);
-    const py = renderer.camera.toScreenY(pointer.y);
+    const px =
+      renderer.camera.toScreenX(pointer.x);
+
+    const py =
+      renderer.camera.toScreenY(pointer.y);
 
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
 
     ctx.beginPath();
+
     ctx.moveTo(px - 10, py);
     ctx.lineTo(px + 10, py);
+
     ctx.moveTo(px, py - 10);
     ctx.lineTo(px, py + 10);
-    ctx.stroke();
 
-    const coordinates =
-      `Cursor: (${pointer.x.toFixed(2)}, ` +
-      `${pointer.y.toFixed(2)}) m`;
+    ctx.stroke();
 
     ctx.font = '14px monospace';
     ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'left';
 
     ctx.fillText(
-      coordinates,
+      `Cursor: (${pointer.x.toFixed(2)}, ` +
+      `${pointer.y.toFixed(2)}) m`,
       15,
       canvas.height - 15
     );
   }
 
-  // ========================================
-  // ENERGY GRAPH
-  // ========================================
-
   if (showEnergy.checked) {
     energyChart.draw();
   }
 
-  renderMs = performance.now() - renderStart;
+  renderMs =
+    performance.now() - renderStart;
 
-  // Update diagnostics.
-  hud.update(world, fps, physicsMs, renderMs);
+  hud.update(
+    world,
+    fps,
+    physicsMs,
+    renderMs
+  );
 
   requestAnimationFrame(frame);
 }
 
 // ==========================================
-// LIVE PHYSICS SLIDERS
+// GRAVITY CONTROL
 // ==========================================
 
 gravityInput.addEventListener('input', () => {
-  const G = Math.max(
-    0.1,
-    Math.min(2, parseFloat(gravityInput.value))
+
+  const value = parseFloat(
+    gravityInput.value
   );
 
-  gravityInput.value = G;
-  gravityLabel.textContent = G.toFixed(2);
+  gravityLabel.textContent =
+    value.toFixed(2);
 
   for (const force of world.forces) {
+
     if (force instanceof NewtonGravity) {
-      force.G = G;
+      force.G = value;
     }
   }
 
-  hud.reset(world);
-  energyChart.reset();
-  energyChart.record(world);
+  resetMeasurements();
 });
 
+// ==========================================
+// SPRING CONTROL
+// ==========================================
+
 stiffnessInput.addEventListener('input', () => {
-  const k = Math.max(
-    1,
-    Math.min(40, parseFloat(stiffnessInput.value))
+
+  const k = parseFloat(
+    stiffnessInput.value
   );
 
-  stiffnessInput.value = k;
   stiffnessLabel.textContent = `${k} N/m`;
 
   for (const force of world.forces) {
+
     if (force instanceof Spring) {
       force.k = k;
     }
   }
 
-  hud.reset(world);
-  energyChart.reset();
-  energyChart.record(world);
+  resetMeasurements();
 });
 
 // ==========================================
@@ -745,54 +965,101 @@ stiffnessInput.addEventListener('input', () => {
 // ==========================================
 
 sceneSelect.addEventListener('change', reset);
-integratorSelect.addEventListener('change', reset);
+
+integratorSelect.addEventListener(
+  'change',
+  reset
+);
 
 countInput.addEventListener('input', () => {
+
   countLabel.textContent = countInput.value;
+
   reset();
 });
 
-restitutionInput.addEventListener('input', () => {
-  const restitution = parseFloat(restitutionInput.value);
+restitutionInput.addEventListener(
+  'input',
 
-  restLabel.textContent = restitution.toFixed(2);
-  world.restitution = restitution;
-});
+  () => {
 
-speedInput.addEventListener('input', () => {
-  setSpeed(parseFloat(speedInput.value));
-});
+    const e = parseFloat(
+      restitutionInput.value
+    );
+
+    restLabel.textContent = e.toFixed(2);
+
+    world.restitution = e;
+  }
+);
+
+speedInput.addEventListener(
+  'input',
+
+  () => setSpeed(
+    parseFloat(speedInput.value)
+  )
+);
 
 document.querySelector('#reset')
   .addEventListener('click', reset);
 
-pauseButton.addEventListener('click', togglePause);
+pauseButton.addEventListener(
+  'click',
+  togglePause
+);
 
 document.querySelector('#step')
   .addEventListener('click', singleStep);
 
-document.querySelector('#guard')
-  .addEventListener('change', () => {
+guardInput.addEventListener(
+  'change',
+
+  () => {
+
     if (sceneSelect.value === 'jitter') {
       reset();
     }
-  });
+  }
+);
+
+// ==========================================
+// MEASUREMENT REPORT
+// ==========================================
 
 document.querySelector('#report')
   .addEventListener('click', () => {
-    const result = {
+
+    const momentum = world.totalMomentum();
+
+    const maxSpeed = Math.max(
+      0,
+      ...world.bodies.map(body =>
+        Math.hypot(
+          body.vel.x,
+          body.vel.y
+        )
+      )
+    );
+
+    console.table({
       scene: sceneSelect.value,
       time: world.time,
       bodies: world.bodies.length,
+      timestep: DT,
+      contactIterations: world.contactIterations,
       energy: world.totalEnergy(),
       initialEnergy: hud.initialEnergy,
-      momentum: world.totalMomentum(),
+      momentumX: momentum.x,
+      momentumY: momentum.y,
+      momentumMagnitude: momentum.magnitude,
+      angularMomentum: world.totalAngularMomentum(),
+      maxSpeed,
+      shotsFired,
       fps,
       physicsMs,
       renderMs
-    };
-
-    console.table(result);
+    });
 
     status.textContent =
       'Measurements logged to Console (F12)';
@@ -803,9 +1070,9 @@ document.querySelector('#report')
 // ==========================================
 
 window.addEventListener('keydown', event => {
+
   const tag = event.target.tagName;
 
-  // Preserve normal form and button behavior.
   if (
     tag === 'INPUT' ||
     tag === 'SELECT' ||
@@ -819,17 +1086,23 @@ window.addEventListener('keydown', event => {
   }
 
   if (event.code === 'Space') {
+
     event.preventDefault();
+
     togglePause();
   }
 
   if (event.code === 'Period') {
+
     event.preventDefault();
+
     singleStep();
   }
 
   if (event.code === 'KeyR') {
+
     event.preventDefault();
+
     reset();
   }
 
@@ -837,74 +1110,65 @@ window.addEventListener('keydown', event => {
     event.key === '+' ||
     event.key === '='
   ) {
+
     event.preventDefault();
+
     setSpeed(speed + 0.25);
   }
 
   if (event.key === '-') {
+
     event.preventDefault();
+
     setSpeed(speed - 0.25);
   }
 });
 
 // ==========================================
-// LAB 10 B3: RESPONSIVE CANVAS RESIZING
+// RESPONSIVE CANVAS
 // ==========================================
 
 function resizeCanvas() {
+
   const dpr = Math.min(
     window.devicePixelRatio || 1,
     3
   );
 
-  // Resize the main simulation canvas.
-  const simulationWidth = Math.max(
+  canvas.width = Math.max(
     1,
     Math.round(canvas.clientWidth * dpr)
   );
 
-  const simulationHeight = Math.max(
+  canvas.height = Math.max(
     1,
     Math.round(canvas.clientHeight * dpr)
   );
 
-  if (
-    canvas.width !== simulationWidth ||
-    canvas.height !== simulationHeight
-  ) {
-    canvas.width = simulationWidth;
-    canvas.height = simulationHeight;
-  }
-
-  // Resize the energy graph.
   const graphCanvas = energyChart.canvas;
 
-  const graphWidth = Math.max(
+  graphCanvas.width = Math.max(
     1,
     Math.round(graphCanvas.clientWidth * dpr)
   );
 
-  const graphHeight = Math.max(
+  graphCanvas.height = Math.max(
     1,
     Math.round(graphCanvas.clientHeight * dpr)
   );
 
-  if (
-    graphCanvas.width !== graphWidth ||
-    graphCanvas.height !== graphHeight
-  ) {
-    graphCanvas.width = graphWidth;
-    graphCanvas.height = graphHeight;
-  }
-
-  // Redraw using the updated dimensions.
   if (world) {
+
     renderer.draw(world);
+
     energyChart.draw();
   }
 }
 
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener(
+  'resize',
+  resizeCanvas
+);
 
 // ==========================================
 // START SIMULATION
@@ -913,31 +1177,32 @@ window.addEventListener('resize', resizeCanvas);
 countLabel.textContent = countInput.value;
 
 restLabel.textContent =
-  parseFloat(restitutionInput.value).toFixed(2);
+  parseFloat(restitutionInput.value)
+    .toFixed(2);
 
 gravityLabel.textContent =
-  parseFloat(gravityInput.value).toFixed(2);
+  parseFloat(gravityInput.value)
+    .toFixed(2);
 
 stiffnessLabel.textContent =
   `${parseFloat(stiffnessInput.value)} N/m`;
 
-
 setSpeed(1);
+
 reset();
 
-// Respect the user's reduced-motion preference.
+// Respect reduced-motion preferences.
 if (
   window.matchMedia(
     '(prefers-reduced-motion: reduce)'
   ).matches
 ) {
+
   paused = true;
+
   pauseButton.textContent = 'Resume';
 }
 
-// Initialize high-resolution canvas dimensions.
 resizeCanvas();
 
-// Start the rendering loop.
 requestAnimationFrame(frame);
-

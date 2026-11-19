@@ -2,13 +2,26 @@
 import { EulerCromer } from './integrators.js';
 import { resolveCollisions } from './collisions.js';
 
+import {
+  Gravity,
+  NewtonGravity,
+  Spring
+} from './forces.js';
+
+// ==========================================
+// WORLD AND PHYSICS INSTRUMENTATION
+// ==========================================
+
 export class World {
+
   constructor({
+
     integrator = new EulerCromer(),
     bounds = null,
     restitution = 1,
     pairCollisions = true,
     contactIterations = 1
+
   } = {}) {
 
     this.bodies = [];
@@ -20,12 +33,51 @@ export class World {
     this.restitution = restitution;
     this.pairCollisions = pairCollisions;
 
-    // Additional contact passes
     this.contactIterations = contactIterations;
 
     this.jitterGuard = true;
 
     this.time = 0;
+
+    // ======================================
+    // DEBUG INSTRUMENTATION
+    // ======================================
+
+    this.stepCount = 0;
+
+    this.contactsThisStep = 0;
+    this.totalContacts = 0;
+    this.peakContacts = 0;
+
+    this.maxSpeed = 0;
+    this.maxAngularSpeed = 0;
+
+    this.lastDT = 0;
+
+    // ======================================
+    // CONSERVATIVE TEST MODE
+    // ======================================
+
+    const params = new URLSearchParams(
+
+      typeof window !== 'undefined'
+        ? window.location.search
+        : ''
+
+    );
+
+    this.conservativeMode =
+
+      params.get('conservative') === '1';
+  }
+
+  // ========================================
+  // CONSERVATIVE MODE CONTROL
+  // ========================================
+
+  setConservativeMode(enabled) {
+
+    this.conservativeMode = Boolean(enabled);
   }
 
   // ========================================
@@ -33,13 +85,44 @@ export class World {
   // ========================================
 
   add(body) {
+
     this.bodies.push(body);
+
     return body;
   }
 
   addForce(force) {
+
     this.forces.push(force);
+
     return force;
+  }
+
+  // ========================================
+  // CONSERVATIVE FORCE CHECK
+  // ========================================
+
+  isConservativeForce(force) {
+
+    return (
+
+      force instanceof Gravity ||
+
+      force instanceof NewtonGravity ||
+
+      force instanceof Spring
+
+    );
+  }
+
+  forceEnabled(force) {
+
+    if (!this.conservativeMode) {
+
+      return true;
+    }
+
+    return this.isConservativeForce(force);
   }
 
   // ========================================
@@ -47,13 +130,34 @@ export class World {
   // ========================================
 
   applyForces() {
-    for (const b of this.bodies) {
-      b.clearForce();
+
+    // Clear accumulated forces.
+
+    for (const body of this.bodies) {
+
+      body.clearForce();
     }
 
-    for (const f of this.forces) {
-      f.apply(this);
+    // Apply active forces.
+
+    for (const force of this.forces) {
+
+      if (!this.forceEnabled(force)) {
+
+        continue;
+      }
+
+      force.apply(this);
     }
+  }
+
+  // ========================================
+  // CONTACT INSTRUMENTATION
+  // ========================================
+
+  recordContact(count = 1) {
+
+    this.contactsThisStep += count;
   }
 
   // ========================================
@@ -62,43 +166,224 @@ export class World {
 
   step(dt) {
 
-    // Apply forces
+    this.contactsThisStep = 0;
+
+    this.lastDT = dt;
+
+    // Apply forces.
+
     this.applyForces();
 
-    // Integrate translational and rotational motion
+    // Integrate body motion.
+
     this.integrator.step(this, dt);
 
-    // Resolve collisions and resting contacts
+    // Resolve collisions.
+
     const iterations = Math.max(
+
       1,
+
       Math.floor(this.contactIterations)
+
     );
 
-    for (let i = 0; i < iterations; i++) {
+    for (
+
+      let i = 0;
+
+      i < iterations;
+
+      i++
+
+    ) {
+
       resolveCollisions(this);
     }
 
+    // Update collision diagnostics.
+
+    this.totalContacts +=
+
+      this.contactsThisStep;
+
+    this.peakContacts = Math.max(
+
+      this.peakContacts,
+
+      this.contactsThisStep
+
+    );
+
+    this.updateMeasurements();
+
+    // Advance simulation time.
+
     this.time += dt;
+
+    this.stepCount++;
   }
 
   // ========================================
-  // TOTAL MECHANICAL ENERGY
+  // VELOCITY DIAGNOSTICS
   // ========================================
 
-  totalEnergy() {
-    let energy = 0;
+  updateMeasurements() {
 
-    // Translational and rotational KE
-    for (const b of this.bodies) {
-      energy += b.kineticEnergy();
+    let maxSpeed = 0;
+
+    let maxAngularSpeed = 0;
+
+    for (const body of this.bodies) {
+
+      if (body.isStatic) continue;
+
+      const speed = Math.hypot(
+
+        body.vel.x,
+
+        body.vel.y
+
+      );
+
+      const angularSpeed = Math.abs(
+
+        body.omega ?? 0
+
+      );
+
+      maxSpeed = Math.max(
+
+        maxSpeed,
+
+        speed
+
+      );
+
+      maxAngularSpeed = Math.max(
+
+        maxAngularSpeed,
+
+        angularSpeed
+
+      );
     }
 
-    // Potential energy from forces
-    for (const f of this.forces) {
+    this.maxSpeed = maxSpeed;
+
+    this.maxAngularSpeed =
+
+      maxAngularSpeed;
+  }
+
+  // ========================================
+  // TRANSLATIONAL KINETIC ENERGY
+  // ========================================
+
+  totalTranslationalEnergy() {
+
+    let energy = 0;
+
+    for (const body of this.bodies) {
+
+      if (body.isStatic) continue;
+
+      energy +=
+
+        0.5 *
+
+        body.m *
+
+        (
+
+          body.vel.x ** 2 +
+
+          body.vel.y ** 2
+
+        );
+    }
+
+    return energy;
+  }
+
+  // ========================================
+  // ROTATIONAL KINETIC ENERGY
+  // ========================================
+
+  totalRotationalEnergy() {
+
+    let energy = 0;
+
+    for (const body of this.bodies) {
+
+      if (body.isStatic) continue;
+
+      energy +=
+
+        0.5 *
+
+        body.inertia *
+
+        body.omega ** 2;
+    }
+
+    return energy;
+  }
+
+  // ========================================
+  // POTENTIAL ENERGY
+  // ========================================
+
+  totalPotentialEnergy() {
+
+    let energy = 0;
+
+    for (const force of this.forces) {
+
+      if (!this.forceEnabled(force)) {
+
+        continue;
+      }
+
       if (
-        typeof f.potentialEnergy === 'function'
+
+        typeof force.potentialEnergy !==
+        'function'
+
       ) {
-        energy += f.potentialEnergy(this);
+
+        continue;
+      }
+
+      // Reference gravitational potential
+      // energy to the ground when present.
+
+      if (
+
+        force instanceof Gravity &&
+
+        Number.isFinite(this.groundY)
+
+      ) {
+
+        for (const body of this.bodies) {
+
+          if (body.isStatic) continue;
+
+          energy +=
+
+            body.m *
+
+            force.g *
+
+            (body.pos.y - this.groundY);
+        }
+
+      } else {
+
+        energy +=
+
+          force.potentialEnergy(this);
       }
     }
 
@@ -106,24 +391,49 @@ export class World {
   }
 
   // ========================================
+  // TOTAL MECHANICAL ENERGY
+  // ========================================
+
+  totalEnergy() {
+
+    return (
+
+      this.totalTranslationalEnergy() +
+
+      this.totalRotationalEnergy() +
+
+      this.totalPotentialEnergy()
+
+    );
+  }
+
+  // ========================================
   // TOTAL LINEAR MOMENTUM
   // ========================================
 
   totalMomentum() {
+
     let x = 0;
+
     let y = 0;
 
-    for (const b of this.bodies) {
-      if (b.isStatic) continue;
+    for (const body of this.bodies) {
 
-      x += b.m * b.vel.x;
-      y += b.m * b.vel.y;
+      if (body.isStatic) continue;
+
+      x += body.m * body.vel.x;
+
+      y += body.m * body.vel.y;
     }
 
     return {
+
       x,
+
       y,
+
       magnitude: Math.hypot(x, y)
+
     };
   }
 
@@ -132,21 +442,34 @@ export class World {
   // ========================================
 
   totalAngularMomentum() {
+
     let L = 0;
 
-    for (const b of this.bodies) {
-      if (b.isStatic) continue;
+    for (const body of this.bodies) {
 
-      // Orbital angular momentum about origin
+      if (body.isStatic) continue;
+
+      // Orbital angular momentum.
+
       const orbital =
-        b.m * (
-          b.pos.x * b.vel.y -
-          b.pos.y * b.vel.x
+
+        body.m *
+
+        (
+
+          body.pos.x * body.vel.y -
+
+          body.pos.y * body.vel.x
+
         );
 
-      // Rotational angular momentum about COM
+      // Rotational angular momentum.
+
       const spin =
-        b.inertia * b.omega;
+
+        body.inertia *
+
+        body.omega;
 
       L += orbital + spin;
     }
@@ -155,25 +478,124 @@ export class World {
   }
 
   // ========================================
+  // PHYSICS DIAGNOSTIC SNAPSHOT
+  // ========================================
+
+  diagnostics() {
+
+    return {
+
+      time: this.time,
+
+      timestep: this.lastDT,
+
+      stepCount: this.stepCount,
+
+      bodyCount: this.bodies.length,
+
+      dynamicBodies:
+
+        this.bodies.filter(
+
+          body => !body.isStatic
+
+        ).length,
+
+      energy:
+
+        this.totalEnergy(),
+
+      translationalEnergy:
+
+        this.totalTranslationalEnergy(),
+
+      rotationalEnergy:
+
+        this.totalRotationalEnergy(),
+
+      potentialEnergy:
+
+        this.totalPotentialEnergy(),
+
+      momentum:
+
+        this.totalMomentum(),
+
+      angularMomentum:
+
+        this.totalAngularMomentum(),
+
+      contactsThisStep:
+
+        this.contactsThisStep,
+
+      totalContacts:
+
+        this.totalContacts,
+
+      peakContacts:
+
+        this.peakContacts,
+
+      maxSpeed:
+
+        this.maxSpeed,
+
+      maxAngularSpeed:
+
+        this.maxAngularSpeed,
+
+      contactIterations:
+
+        this.contactIterations,
+
+      restitution:
+
+        this.conservativeMode
+
+          ? 1
+
+          : this.restitution,
+
+      conservativeMode:
+
+        this.conservativeMode
+
+    };
+  }
+
+  // ========================================
   // TARGET STATUS
   // ========================================
 
   targetStatus() {
+
     const targets = this.bodies.filter(
-      b => b.isTarget
+
+      body => body.isTarget
+
     );
 
     const hit = targets.filter(
-      b => b.isHit
+
+      body => body.isHit
+
     ).length;
 
     return {
+
       total: targets.length,
+
       hit,
+
       remaining: targets.length - hit,
+
       complete:
+
         targets.length > 0 &&
+
         hit === targets.length
+
     };
   }
 }
