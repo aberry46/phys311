@@ -4,6 +4,8 @@
 
 **Repository:** https://github.com/aberry46/phys311
 
+**Live Link:** https://aberry46.github.io/phys311/labs/lab11/
+
 ## 1. Title & Pitch
 
 Slingshot Destruction is an interactive 2D physics game where players launch projectiles into wooden block structures, using realistic collisions, momentum transfer, and rotational motion to knock down targets.
