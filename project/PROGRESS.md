@@ -89,4 +89,3 @@ See `DECISIONS.md` for each **Planned / Did / Why** decision. The main tradeoff 
 
 1. Validate gameplay and contact stability across additional launch angles, block arrangements, longer runs, and devices.
 2. Refine UI polish and communicate conservative-mode limitations clearly, including normal-mode energy dissipation and dropped real time.
-3. Package final screenshots, test output, final report, and reproducible instructions; check the deployed GitHub Pages version after pushing.
