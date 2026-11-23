@@ -1,133 +1,92 @@
-# PHYS 311: Week 12 Progress Log
+# PHYS 311 | Week 12 Progress Log
 
 **Project:** Slingshot Destruction  
-**Live Simulation:** https://aberry46.github.io/phys311/labs/lab12/index.html  
-**Repository:** https://github.com/aberry46/phys311
+**Live URL:** https://aberry46.github.io/phys311/labs/lab12/index.html  
+**Source:** https://github.com/aberry46/phys311/tree/main/labs/lab12  
+**Implementation location:** `labs/lab12/`
 
----
+## Part A: MUST-Tier Status
 
-## Part A: MUST Tier Status
+| MUST feature | Status | Evidence |
+| --- | --- | --- |
+| Adjustable slingshot projectile launch | Complete | Pointer drag/release and keyboard aiming (W/S, A/D, Enter) |
+| Projectile motion under gravity | Complete | Analytical range test passed |
+| Translational and rotational block motion | Complete | Rotating rectangular bodies and angular momentum test |
+| Circle-to-rectangle and rectangle-to-rectangle collisions | Complete | Impulse solver and isolated collision validation |
+| Ground contact and collapsible structure | Complete, with limitations | Blocks rest and collapse; contact stabilization tested quantitatively |
+| Target detection and reliable scene reset | Complete | Both targets destroyed during browser testing; reset recreates world and energy baseline |
+| Running browser interface and GitHub Pages deployment | Existing live page verified previously; updated local build needs push | Source is in `labs/lab12/`; verify the new version after deployment |
 
-| MUST Feature | Status | Description |
-|---|---|---|
-| Adjustable drag-and-release slingshot | COMPLETED | Projectile launching with adjustable velocity and direction. |
-| Projectile motion under gravity | COMPLETED | Gravity implemented with fixed-timestep numerical integration. |
-| Translational and rotational block dynamics | COMPLETED | Rectangular blocks respond to linear and angular collision impulses. |
-| Circle-to-rectangle and rectangle-to-rectangle collisions | COMPLETED | Rigid-body collision detection and response implemented. |
-| Ground contact and collapsible structure | COMPLETED | Three-block structure collapses under projectile impacts without the previous ground-body errors. |
-| Target detection and reset | COMPLETED | Target tracking, destruction detection, and scene rebuilding implemented. |
-| GitHub Pages deployment | COMPLETED | Simulation publicly accessible through GitHub Pages. |
+The simulation uses a fixed physics timestep of **1/240 s** and **four collision-resolution iterations** in the slingshot scene. A frame-time cap and maximum catch-up step count prevent unbounded work under throttling. This protects numerical step size but can cause simulated time to fall behind wall-clock time.
 
-All seven MUST features have been implemented; no MUST-tier features were cut or deferred.
+No core MUST feature was intentionally cut. Optional expansions such as additional structures and advanced contact solving were deferred.
 
-The simulation uses Velocity Verlet integration with a fixed timestep of 1/240 s and an accumulator-based animation loop.
+## Part B: Diagnostics and Numerical Validation
 
-**Additional Verification:**
-- CPU-throttling test: Pending final browser verification.
-- Browser console errors: Pending final live-site check.
-- Debug HUD: Implemented using `?debug=1`.
-- Conservative test mode: Implemented using `?conservative=1`.
+### Original proposal tests
 
----
+Five experiments produce **seven checks, all passing** in the latest supplied terminal output.
 
-## Part B: Instrumentation and Validation
+| Check | Measured result | Outcome |
+| --- | --- | --- |
+| Elastic linear momentum | 0 kg m/s error | PASS |
+| Elastic collision energy | 0 J error | PASS |
+| Angular momentum | 2.22044605 × 10^-16 kg m²/s error | PASS |
+| Projectile range at 10 m/s and 45° | 10.19367865 m vs. 10.19367992 m expected; 0.00001240% error | PASS |
+| Projectile position at t = 1 s, DT = 1/240 | 3.42409772 × 10^-14 m error | PASS |
+| Inelastic linear momentum | 4.44089210 × 10^-16 kg m/s error | PASS |
+| Inelastic energy loss | 6.33661679 J lost | PASS |
 
-### B1. Debug HUD
+These checks are isolated experiments. They do not establish perfect energy conservation during sustained multi-body contact.
 
-The simulation includes a debug HUD displaying:
+### Resting-contact investigation
 
-- Total mechanical energy and percentage drift
-- Linear and angular momentum
-- Body count and maximum speed
-- Contacts resolved per timestep
-- Measured FPS and performance diagnostics
+A 10-second, three-block diagnostic compared timesteps 1/120, 1/240, and 1/480 s, with 1, 4, and 8 contact iterations in both normal and conservative modes. Instrumentation separated changes in kinetic and potential energy during collision resolution.
 
-The energy drift display changes color when the measured error exceeds the specified 1% tolerance.
+At **DT = 1/240 s and four iterations**:
 
-### B2. Conservative Test Mode
+| Measurement | Before change | After change |
+| --- | ---: | ---: |
+| Conservative final energy drift | +10.40275% | +0.64152% |
+| Collision-phase potential energy added | +13.011494 J | +0.802396 J |
+| Maximum angular speed | 6.04380 rad/s | 0.65047 rad/s |
+| Maximum ground penetration | 0.0003586 m | 0.0005000 m |
 
-A conservative testing mode is accessible through the `?conservative=1` URL parameter.
+The conservative drift decreased by approximately **93.8%** relative to the tested baseline. In the initial solver, collision impulses changed kinetic energy by approximately zero in conservative mode, while position corrections added potential energy. Conservative-only correction tolerances reduced repeated upward adjustments of resting blocks. The tradeoff is greater permitted penetration, approximately 0.5 mm in the tested configuration. Drift remains timestep-sensitive, especially at DT = 1/120 s.
 
-This mode sets restitution to 1, disables friction impulses, and excludes nonconservative driving and dissipative forces. It allows conservation behavior to be examined separately from normal gameplay.
+Normal-mode mechanical energy can decrease through restitution and friction and should not be interpreted as a conservative-energy error. The HUD now labels it **mechanical energy change**; conservative mode displays **energy drift** and its tolerance.
 
-### B3. Numerical Validation
+### Browser, performance, and usability checks
 
-All five experiments outlined in the original proposal were completed, producing seven successful validation checks.
+- The scene-specific controls are disabled when not relevant to the selected scene.
+- The UI exposes **Conservative Test Mode** and **Detailed Debug HUD** checkboxes, with equivalent URL parameters `?conservative=1` and `?debug=1`.
+- Keyboard launching is available through W/S (angle), A/D (power), and Enter (launch), alongside pointer and touch input.
+- Browser screenshots demonstrated projectile launches, rotating/falling blocks, target hits, and the interface under **4× and 6× CPU slowdown**.
+- The new performance notice reported **1.117 s of discarded wall-clock time** in a throttled session. The fixed physics timestep was retained; real-time pacing is not guaranteed under heavy load.
+- A long-session browser run reached **254.51 s**, **61,082 physics steps**, **30 shots**, **2/2 targets destroyed**, and **25 total bodies**. The body count matches the five original scene bodies plus the **20 active-projectile cap**.
+- The detailed HUD displayed energy decomposition, momentum, angular momentum, contact impulse counts, computation times, and discarded real time. Its displayed **60 FPS** is a sampled measurement, not proof that every frame was sustained at 60 FPS.
+- Chrome reported Content Security Policy restrictions involving `eval`; their source was not confirmed to be the simulation, so no source-code cause is claimed.
 
-| Test | Expected / Tolerance | Measured Result | Status |
-|---|---|---|---|
-| 1. Linear momentum conservation | Error < 1e-9 kg m/s | 0 kg m/s | PASS |
-| 2. Elastic collision energy | Error < 1e-8 J | 0 J | PASS |
-| 2. Angular momentum conservation | Error < 1e-8 kg m²/s | 2.22044605e-16 kg m²/s | PASS |
-| 3. Projectile range | Relative error < 0.5% | 0.00001240% | PASS |
-| 4. Timestep convergence | Position error < 0.01 m | 3.42409772e-14 m | PASS |
-| 5. Inelastic momentum conservation | Error < 1e-9 kg m/s | 4.44089210e-16 kg m/s | PASS |
-| 5. Inelastic energy loss | Final KE < Initial KE | 6.33661679 J lost | PASS |
+## Part C: Bugs, Decisions, and Remaining Work
 
-**Overall: 7/7 checks passed (100%).**
+### Bug 1: Resting-contact energy injection (physics)
 
-For the projectile range experiment, the analytical range was 10.19367992 m, compared with a simulated range of 10.19367865 m.
+**Symptom:** Conservative-mode stacked-block tests accumulated large positive mechanical energy drift despite nominally elastic impulses.  
+**Diagnosis:** Collision-phase measurements isolated the increase to gravitational potential energy introduced by positional corrections; the measured conservative kinetic-energy change during collision resolution was approximately zero.  
+**Fix:** Added conservative-only ground and rectangle-rectangle correction tolerances and reduced the game's contact iterations to four. Retesting reduced drift from 10.40275% to 0.64152% for the standard 10-second configuration, while all seven isolated validation checks continued to pass.
 
-For the inelastic collision experiment, kinetic energy decreased from 10.5 J to approximately 4.16338 J while conserving linear momentum within the specified tolerance.
+### Bug 2: Misleading energy and throttling diagnostics (interface/measurement)
 
-These results demonstrate accurate behavior under isolated testing conditions, although the repeated structural contacts provide a separate challenge that needs to be addressed.
+**Symptom:** The HUD displayed large negative "energy drift" during dissipative normal gameplay, and the former frame cap did not visibly quantify discarded real time.  
+**Diagnosis:** A conservative tolerance was being applied to a deliberately inelastic scene; long frames were capped without a user-facing accumulated time-loss value.  
+**Fix:** Separated normal-mode mechanical energy change from conservative-mode drift, added detailed performance metrics and a visible discarded-time warning, and reset the measurement baseline consistently when appropriate.
 
----
+### Scope decisions
 
-## Part C: Development Progress
+See `DECISIONS.md` for each **Planned / Did / Why** decision. The main tradeoff is a small conservative-mode penetration tolerance in exchange for much lower correction-induced energy drift. New physics features and multiple levels were deferred in favor of stability and evidence.
 
-### C1. Scope Decisions
+### Three Week 13 SHOULD priorities
 
-No MUST-tier features were removed or deffered!
-
-I prioritized the fundamental physics implementation, collision reliability, and numerical testing before additional gameplay features.
-
-Improvements to resting-contact stability, expanded structures, and interface polish remain SHOULD-tier priorities.
-
-See `DECISIONS.md` for the documented scope and implementation decisions.
-
-### C2. Bugs Addressed
-
-**Bug 1: Ground-Body Collision Errors**
-
-- **Symptom:** Earlier versions of the collapsible structure produced ground-body errors during impacts.
-- **Cause:** Ground-contact handling in the earlier collision implementation required correction. The exact underlying cause has not been independently established.
-- **Fix:** Revised collision and ground-contact handling to support the current collapsible structure without the previously observed errors.
-
-**Bug 2: Target Detection and Reset**
-
-- **Symptom:** Target detection and reset behavior were inconsistent in earlier implementations.
-- **Cause:** The earlier game-state handling required improvement; the exact underlying cause has not been independently established.
-- **Fix:** Improved target detection and scene rebuilding. Reset now restores initial conditions and re-baselines the energy measurements.
-
-### C3. Known Physics Limitation
-
-The largest remaining issue is energy drift during sustained structural contact.
-
-In conservative mode, I observed approximately **3.54% energy drift** during prolonged contact between blocks.
-
-Although isolated collisions satisfy the conservation tests, repeated contact impulses and positional corrections may introduce additional energy errors when several bodies remain in contact.
-
-This behavior is being investigated through timestep comparisons and collision-solver adjustments.
-
----
-
-## Part D: Week 13 Plan
-
-My three primary SHOULD-tier priorities are:
-
-1. **Resting-Contact Stability:** Improve repeated collision handling and investigate energy drift during sustained contact.
-2. **Interface and Gameplay Improvements:** Refine controls, improve scene-specific parameter accessibility, and add clearer gameplay instructions.
-3. **Final Validation and Documentation:** Complete numerical diagnostics, convergence testing, and final project documentation.
-
-The main focus will be on improving the existing working simulation rather than introducing substantial new physics features.
-
----
-
-## Week 12 Summary
-
-The complete MUST tier has been fully implemented and deployed! All seven recorded numerical validation checks passed, demonstrating accurate projectile motion and conservation behavior in isolated collision experiments.
-
-The remaining technical concern is sustained-contact energy drift, which does not affect the successful completion of the isolated validation tests but remains a priority for further improvement.
-
-Overall, the simulation is ready for beta review!
+1. Validate gameplay and contact stability across additional launch angles, block arrangements, longer runs, and devices.
+2. Refine UI polish and communicate conservative-mode limitations clearly, including normal-mode energy dissipation and dropped real time.
+3. Package final screenshots, test output, final report, and reproducible instructions; check the deployed GitHub Pages version after pushing.

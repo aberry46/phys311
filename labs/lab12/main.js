@@ -1,6 +1,14 @@
 import { Body } from './engine/body.js';
-import { Gravity, NewtonGravity, Spring } from './engine/forces.js';
-import { Euler, EulerCromer, VelocityVerlet } from './engine/integrators.js';
+import {
+  Gravity,
+  NewtonGravity,
+  Spring
+} from './engine/forces.js';
+import {
+  Euler,
+  EulerCromer,
+  VelocityVerlet
+} from './engine/integrators.js';
 import { World } from './engine/world.js';
 import { Renderer } from './render/renderer.js';
 import { HUD } from './render/hud.js';
@@ -9,13 +17,21 @@ import { setupInteractions } from './interaction.js';
 import { EnergyChart } from './render/energy-chart.js';
 
 // ==========================================
-// CONFIGURATION
+// PHYS 311 - SLINGSHOT DESTRUCTION
+// SIMULATION CONFIGURATION
 // ==========================================
 
 const DT = 1 / 240;
 const G = 9.81;
 const GROUND_Y = -4.5;
 const CONTACT_ITERATIONS = 4;
+
+// Maximum simulated-time budget before catch-up is capped.
+const MAX_FRAME_TIME = 0.05;
+const MAX_STEPS_PER_FRAME = 30;
+
+// Limit accumulated projectiles in long sessions.
+const MAX_ACTIVE_PROJECTILES = 20;
 
 const colors = [
   '#f97316',
@@ -27,7 +43,7 @@ const colors = [
 ];
 
 // ==========================================
-// INITIALIZATION
+// DOM AND RENDERER
 // ==========================================
 
 const canvas = document.querySelector('#simulation');
@@ -63,15 +79,22 @@ const pauseButton = document.querySelector('#pause');
 const showTrails = document.querySelector('#show-trails');
 const showVelocity = document.querySelector('#show-velocity');
 const showEnergy = document.querySelector('#show-energy');
+
 const energyPanel = document.querySelector('#energy-panel');
 const guardInput = document.querySelector('#guard');
 
-// New diagnostic controls
-const conservativeInput = document.querySelector('#conservative');
-const debugInput = document.querySelector('#debug');
-const performanceWarning = document.querySelector('#performance-warning');
+const conservativeInput =
+  document.querySelector('#conservative');
 
-const urlParams = new URLSearchParams(window.location.search);
+const debugInput =
+  document.querySelector('#debug');
+
+const performanceWarning =
+  document.querySelector('#performance-warning');
+
+const urlParams = new URLSearchParams(
+  window.location.search
+);
 
 conservativeInput.checked =
   urlParams.get('conservative') === '1';
@@ -84,6 +107,10 @@ hud.setDebug(debugInput.checked);
 const energyChart = new EnergyChart(
   document.querySelector('#energy-chart')
 );
+
+// ==========================================
+// SIMULATION STATE
+// ==========================================
 
 let world;
 let paused = false;
@@ -102,6 +129,42 @@ let shotsFired = 0;
 let previousTargetsHit = 0;
 
 // ==========================================
+// PERFORMANCE INSTRUMENTATION
+// ==========================================
+
+const performanceData = {
+  droppedTime: 0,
+  droppedFrames: 0,
+  lastFrameMs: 0,
+  stepsLastFrame: 0
+};
+
+function resetPerformance() {
+  performanceData.droppedTime = 0;
+  performanceData.droppedFrames = 0;
+  performanceData.lastFrameMs = 0;
+  performanceData.stepsLastFrame = 0;
+}
+
+function showPerformanceWarning() {
+  if (!performanceWarning) return;
+
+  if (performanceData.droppedTime <= 0) {
+    performanceWarning.hidden = true;
+    return;
+  }
+
+  performanceWarning.hidden = false;
+
+  performanceWarning.textContent =
+    'Performance notice: ' +
+    `${performanceData.droppedTime.toFixed(2)} s ` +
+    'of real time has been discarded during slow frames. ' +
+    'The physics timestep remains fixed, but the ' +
+    'simulation may progress slower than real time.';
+}
+
+// ==========================================
 // SCENE-SPECIFIC CONTROLS
 // ==========================================
 
@@ -112,28 +175,30 @@ function updateSceneControls() {
     count: scene === 'billiards',
     gravity: scene === 'orbits',
     stiffness: scene === 'springs',
-    restitution: ['slingshot', 'billiards'].includes(scene),
+    restitution:
+      scene === 'slingshot' ||
+      scene === 'billiards',
     guard: scene === 'jitter'
   };
 
   for (const [id, enabled] of Object.entries(controls)) {
     const input = document.getElementById(id);
-    const label = document.querySelector(`label[for="${id}"]`);
+
+    const label = document.querySelector(
+      `label[for="${id}"]`
+    );
+
+    const allowed =
+      enabled &&
+      !(id === 'restitution' && world?.conservativeMode);
 
     if (input) {
-      input.disabled = !enabled;
+      input.disabled = !allowed;
     }
 
     if (label) {
-      label.style.opacity = enabled ? '1' : '0.4';
+      label.style.opacity = allowed ? '1' : '0.4';
     }
-  }
-
-  // Conservative mode overrides the restitution slider.
-  if (world?.conservativeMode) {
-    restitutionInput.disabled = true;
-    const label = document.querySelector('label[for="restitution"]');
-    if (label) label.style.opacity = '0.4';
   }
 }
 
@@ -152,9 +217,20 @@ function updateVisualSettings() {
   }
 }
 
-showTrails.addEventListener('change', updateVisualSettings);
-showVelocity.addEventListener('change', updateVisualSettings);
-showEnergy.addEventListener('change', updateVisualSettings);
+showTrails.addEventListener(
+  'change',
+  updateVisualSettings
+);
+
+showVelocity.addEventListener(
+  'change',
+  updateVisualSettings
+);
+
+showEnergy.addEventListener(
+  'change',
+  updateVisualSettings
+);
 
 updateVisualSettings();
 
@@ -163,23 +239,24 @@ updateVisualSettings();
 // ==========================================
 
 function integrator() {
-  if (integratorSelect.value === 'verlet') {
-    return new VelocityVerlet();
-  }
+  switch (integratorSelect.value) {
+    case 'verlet':
+      return new VelocityVerlet();
 
-  if (integratorSelect.value === 'cromer') {
-    return new EulerCromer();
-  }
+    case 'cromer':
+      return new EulerCromer();
 
-  return new Euler();
+    default:
+      return new Euler();
+  }
 }
 
 // ==========================================
-// BLOCK CONSTRUCTION
+// BODY CREATION
 // ==========================================
 
 function addBlock(
-  world,
+  sceneWorld,
   x,
   y,
   width,
@@ -187,7 +264,7 @@ function addBlock(
   mass,
   color = '#c68c53'
 ) {
-  return world.add(new Body({
+  return sceneWorld.add(new Body({
     shape: 'rectangle',
     x,
     y,
@@ -198,12 +275,13 @@ function addBlock(
   }));
 }
 
-// ==========================================
-// TARGET CONSTRUCTION
-// ==========================================
-
-function addTarget(world, x, y, radius = 0.35) {
-  return world.add(new Body({
+function addTarget(
+  sceneWorld,
+  x,
+  y,
+  radius = 0.35
+) {
+  return sceneWorld.add(new Body({
     shape: 'circle',
     x,
     y,
@@ -216,7 +294,7 @@ function addTarget(world, x, y, radius = 0.35) {
 }
 
 // ==========================================
-// SCENE: SLINGSHOT DESTRUCTION
+// SCENE 1: SLINGSHOT DESTRUCTION
 // ==========================================
 
 function makeSlingshot() {
@@ -235,6 +313,7 @@ function makeSlingshot() {
   };
 
   w.groundY = GROUND_Y;
+
   w.addForce(new Gravity(G));
 
   w.launcher = {
@@ -242,10 +321,22 @@ function makeSlingshot() {
     y: GROUND_Y + 0.6
   };
 
-  // Collapsible structure
-  addBlock(w, 3.0, GROUND_Y + 1, 0.8, 2.0, 3, '#c68c53');
-  addBlock(w, 5.0, GROUND_Y + 1, 0.8, 2.0, 3, '#c68c53');
-  addBlock(w, 4.0, GROUND_Y + 2.25, 3.2, 0.5, 3, '#d7a36c');
+  // Supporting columns
+  addBlock(
+    w, 3.0, GROUND_Y + 1,
+    0.8, 2.0, 3, '#c68c53'
+  );
+
+  addBlock(
+    w, 5.0, GROUND_Y + 1,
+    0.8, 2.0, 3, '#c68c53'
+  );
+
+  // Horizontal beam
+  addBlock(
+    w, 4.0, GROUND_Y + 2.25,
+    3.2, 0.5, 3, '#d7a36c'
+  );
 
   // Targets
   addTarget(w, 4.0, GROUND_Y + 0.35);
@@ -255,7 +346,7 @@ function makeSlingshot() {
 }
 
 // ==========================================
-// SCENE: BILLIARDS
+// SCENE 2: BILLIARDS
 // ==========================================
 
 function makeBilliards() {
@@ -272,7 +363,7 @@ function makeBilliards() {
     restitution: parseFloat(restitutionInput.value)
   });
 
-  const count = parseFloat(countInput.value);
+  const count = parseInt(countInput.value, 10);
   const columns = 20;
   const rows = Math.ceil(count / columns);
 
@@ -280,11 +371,17 @@ function makeBilliards() {
     const row = Math.floor(i / columns);
     const col = i % columns;
 
-    const x = -9.2 + (col + 0.5) * (18.4 / columns);
-    const y = -5.2 + (row + 0.5) * (10.4 / rows);
+    const x =
+      -9.2 + (col + 0.5) * (18.4 / columns);
 
-    const angle = (i * 2.39996) % (2 * Math.PI);
-    const v = 1.8 + (i % 5) * 0.3;
+    const y =
+      -5.2 + (row + 0.5) * (10.4 / rows);
+
+    const angle =
+      (i * 2.39996) % (2 * Math.PI);
+
+    const v =
+      1.8 + (i % 5) * 0.3;
 
     w.add(new Body({
       x,
@@ -301,7 +398,7 @@ function makeBilliards() {
 }
 
 // ==========================================
-// SCENE: JITTER GUARD
+// SCENE 3: JITTER GUARD
 // ==========================================
 
 function makeJitterTest() {
@@ -342,7 +439,7 @@ function makeJitterTest() {
 }
 
 // ==========================================
-// SCENE: N-BODY GRAVITY
+// SCENE 4: N-BODY GRAVITY
 // ==========================================
 
 function makeOrbits() {
@@ -393,7 +490,7 @@ function makeOrbits() {
 }
 
 // ==========================================
-// SCENE: SPRING NETWORK
+// SCENE 5: SPRING NETWORK
 // ==========================================
 
 function makeSprings() {
@@ -451,11 +548,12 @@ function makeSprings() {
 }
 
 // ==========================================
-// RESET ENERGY BASELINE
+// ENERGY BASELINE
 // ==========================================
 
 function resetMeasurements() {
   hud.reset(world);
+
   energyChart.reset();
   energyChart.record(world);
 }
@@ -465,7 +563,9 @@ function resetMeasurements() {
 // ==========================================
 
 function updateGameStatus() {
-  if (sceneSelect.value !== 'slingshot') return;
+  if (sceneSelect.value !== 'slingshot') {
+    return;
+  }
 
   const targets = world.targetStatus();
 
@@ -473,18 +573,19 @@ function updateGameStatus() {
     status.textContent =
       `ALL TARGETS DESTROYED! | ` +
       `Shots fired: ${shotsFired} | ` +
-      `Press R to restart`;
+      'Press R to restart';
+
     return;
   }
 
   status.textContent =
     `Targets: ${targets.hit}/${targets.total} | ` +
     `Shots fired: ${shotsFired} | ` +
-    `Drag and release to launch`;
+    'Drag or use WASD + Enter to launch';
 }
 
 // ==========================================
-// DIRECT INTERACTIONS
+// INTERACTION SYSTEM
 // ==========================================
 
 const interactions = setupInteractions(
@@ -494,32 +595,64 @@ const interactions = setupInteractions(
   () => sceneSelect.value,
 
   () => {
-    resetMeasurements();
-
+    // The interaction module adds a projectile
+    // before invoking this callback.
     if (sceneSelect.value === 'slingshot') {
+      const launched = world.bodies.at(-1);
+
+      if (
+        launched &&
+        launched.shape === 'circle' &&
+        !launched.isStatic
+      ) {
+        launched.isProjectile = true;
+      }
+
       shotsFired++;
+
+      // Limit the number of retained projectiles.
+      cleanupProjectiles();
+
       updateGameStatus();
     } else {
       status.textContent = 'New body launched';
     }
+
+    resetMeasurements();
   }
 );
 
 // ==========================================
-// REMOVE ESCAPED PROJECTILES
+// PROJECTILE MANAGEMENT
 // ==========================================
 
-function removeEscapedProjectiles() {
-  if (sceneSelect.value !== 'slingshot') return;
+function cleanupProjectiles() {
+  if (sceneSelect.value !== 'slingshot') {
+    return;
+  }
 
-  const previousCount = world.bodies.length;
+  const projectiles = world.bodies.filter(
+    body => body.isProjectile === true
+  );
+
+  // Remove older projectiles first.
+  const excess = Math.max(
+    0,
+    projectiles.length - MAX_ACTIVE_PROJECTILES
+  );
+
+  const oldest = new Set(
+    projectiles.slice(0, excess)
+  );
+
+  const oldCount = world.bodies.length;
 
   world.bodies = world.bodies.filter(body => {
-    if (
-      body.isStatic ||
-      body.isTarget ||
-      body.shape === 'rectangle'
-    ) {
+    if (oldest.has(body)) {
+      return false;
+    }
+
+    if (!body.isProjectile) {
       return true;
     }
 
@@ -531,24 +664,27 @@ function removeEscapedProjectiles() {
     );
   });
 
-  if (world.bodies.length !== previousCount) {
+  if (world.bodies.length !== oldCount) {
     resetMeasurements();
   }
 }
 
 // ==========================================
-// PROJECTILE AND TARGET UPDATES
+// SLINGSHOT UPDATE
 // ==========================================
 
 function updateSlingshot() {
-  if (sceneSelect.value !== 'slingshot') return;
+  if (sceneSelect.value !== 'slingshot') {
+    return;
+  }
 
-  removeEscapedProjectiles();
+  cleanupProjectiles();
 
   const targets = world.targetStatus();
 
   if (targets.hit !== previousTargetsHit) {
     previousTargetsHit = targets.hit;
+
     updateGameStatus();
 
     console.log(
@@ -558,49 +694,64 @@ function updateSlingshot() {
 }
 
 // ==========================================
-// RECORD PHYSICS DATA
+// PHYSICS DATA RECORDING
 // ==========================================
 
 function recordPhysicsData() {
   physicsStepCount++;
 
   if (physicsStepCount % 4 === 0) {
-    for (const body of world.bodies) {
-      if (!body.trail) body.trail = [];
+    if (renderer.showTrails) {
+      for (const body of world.bodies) {
+        if (!body.trail) {
+          body.trail = [];
+        }
 
-      body.trail.push([body.pos.x, body.pos.y]);
+        body.trail.push([
+          body.pos.x,
+          body.pos.y
+        ]);
 
-      if (body.trail.length > 120) {
-        body.trail.shift();
+        if (body.trail.length > 120) {
+          body.trail.shift();
+        }
       }
     }
 
-    energyChart.record(world);
+    if (showEnergy.checked) {
+      energyChart.record(world);
+    }
   }
 
   updateSlingshot();
 
+  // Quantitative report after 60 s of simulation time.
   if (!didLog60 && world.time >= 60) {
     didLog60 = true;
 
     const E0 = hud.initialEnergy;
     const E = world.totalEnergy();
 
-    const energyError =
+    const energyChange =
       Math.abs(E0) > 1e-12
-        ? 100 * Math.abs(E - E0) / Math.abs(E0)
-        : 0;
+        ? 100 * (E - E0) / Math.abs(E0)
+        : null;
 
     console.table({
       scene: sceneSelect.value,
       time: world.time,
       integrator: integratorSelect.value,
-      restitution: world.conservativeMode ? 1 : world.restitution,
-      initialEnergy: E0,
-      finalEnergy: E,
-      energyDifferencePercent: energyError,
+      conservativeMode: world.conservativeMode,
+      restitution: world.conservativeMode
+        ? 1
+        : world.restitution,
+      baselineEnergy: E0,
+      currentEnergy: E,
+      energyChangePercent: energyChange,
       momentum: world.totalMomentum(),
-      angularMomentum: world.totalAngularMomentum()
+      angularMomentum: world.totalAngularMomentum(),
+      droppedRealTimeSeconds:
+        performanceData.droppedTime
     });
   }
 }
@@ -626,16 +777,21 @@ function reset() {
 
   accumulator = 0;
   previousFrame = null;
+
   physicsStepCount = 0;
   didLog60 = false;
 
   shotsFired = 0;
   previousTargetsHit = 0;
 
+  resetPerformance();
+
   interactions.attachToWorld(world);
 
-  // Apply diagnostic configuration after rebuilding the world.
-  world.setConservativeMode(conservativeInput.checked);
+  world.setConservativeMode(
+    conservativeInput.checked
+  );
+
   hud.setDebug(debugInput.checked);
 
   updateSceneControls();
@@ -646,6 +802,8 @@ function reset() {
 
   status.style.whiteSpace = '';
 
+  showPerformanceWarning();
+
   if (scene === 'slingshot') {
     updateGameStatus();
     return;
@@ -654,21 +812,28 @@ function reset() {
   if (scene === 'jitter') {
     world.jitterGuard = guardInput.checked;
 
-    const before = world.bodies.map(body => body.vel.x);
+    const before = world.bodies.map(
+      body => body.vel.x
+    );
 
     world.step(DT);
     recordPhysicsData();
 
-    const after = world.bodies.map(body => body.vel.x);
+    const after = world.bodies.map(
+      body => body.vel.x
+    );
 
     paused = true;
     pauseButton.textContent = 'Resume';
+
     status.style.whiteSpace = 'pre-wrap';
 
     status.textContent =
       `JITTER GUARD TEST\n` +
-      `Left: ${before[0].toFixed(2)} -> ${after[0].toFixed(2)} m/s\n` +
-      `Right: ${before[1].toFixed(2)} -> ${after[1].toFixed(2)} m/s`;
+      `Left: ${before[0].toFixed(2)} -> ` +
+      `${after[0].toFixed(2)} m/s\n` +
+      `Right: ${before[1].toFixed(2)} -> ` +
+      `${after[1].toFixed(2)} m/s`;
 
     return;
   }
@@ -677,7 +842,7 @@ function reset() {
 }
 
 // ==========================================
-// PAUSE
+// PLAYBACK CONTROLS
 // ==========================================
 
 function togglePause() {
@@ -687,21 +852,21 @@ function togglePause() {
     accumulator = 0;
   }
 
-  pauseButton.textContent = paused ? 'Resume' : 'Pause';
+  pauseButton.textContent =
+    paused ? 'Resume' : 'Pause';
 }
-
-// ==========================================
-// SINGLE TIMESTEP
-// ==========================================
 
 function singleStep() {
   if (!paused) return;
 
   world.jitterGuard = guardInput.checked;
-  world.step(DT);
 
+  world.step(DT);
   recordPhysicsData();
-  energyChart.record(world);
+
+  if (showEnergy.checked) {
+    energyChart.record(world);
+  }
 
   accumulator = 0;
 
@@ -709,19 +874,20 @@ function singleStep() {
     `Single step: t = ${world.time.toFixed(6)} s`;
 }
 
-// ==========================================
-// SIMULATION SPEED
-// ==========================================
-
 function setSpeed(value) {
-  speed = Math.max(0.25, Math.min(2, value));
+  speed = Math.max(
+    0.25,
+    Math.min(2, value)
+  );
 
   speedInput.value = speed;
-  speedLabel.textContent = `${speed.toFixed(2)}×`;
+
+  speedLabel.textContent =
+    `${speed.toFixed(2)}×`;
 }
 
 // ==========================================
-// MAIN ANIMATION LOOP
+// FIXED-TIMESTEP ANIMATION LOOP
 // ==========================================
 
 function frame(timestamp) {
@@ -734,35 +900,45 @@ function frame(timestamp) {
     (timestamp - previousFrame) / 1000
   );
 
-  const frameSeconds = Math.min(elapsed, 0.05);
-
   previousFrame = timestamp;
 
+  performanceData.lastFrameMs = elapsed * 1000;
+
+  // Moving average of actual animation frames.
   if (elapsed > 0) {
-    fps = 0.9 * fps + 0.1 / elapsed;
+    const currentFPS = 1 / elapsed;
+
+    fps = 0.9 * fps + 0.1 * currentFPS;
   }
 
-  // Heavy throttling can cause elapsed time to be discarded.
-  // Report this rather than silently claiming real-time accuracy.
-  if (elapsed > 0.05) {
-    performanceWarning.hidden = false;
-    performanceWarning.textContent =
-      'Performance warning: frame exceeded 50 ms. ' +
-      'Simulation may run slower than real time.';
-  } else {
-    performanceWarning.hidden = true;
-  }
+  // Cap the amount of real time used for catch-up.
+  const frameSeconds = Math.min(
+    elapsed,
+    MAX_FRAME_TIME
+  );
 
-  // Fixed timestep physics
+  let discardedSeconds = Math.max(
+    0,
+    elapsed - frameSeconds
+  );
+
+  // ========================================
+  // PHYSICS UPDATE
+  // ========================================
+
   const physicsStart = performance.now();
+
+  let steps = 0;
 
   if (!paused) {
     accumulator += frameSeconds * speed;
 
-    let steps = 0;
-
-    while (accumulator >= DT && steps < 30) {
+    while (
+      accumulator >= DT &&
+      steps < MAX_STEPS_PER_FRAME
+    ) {
       world.jitterGuard = guardInput.checked;
+
       world.step(DT);
 
       accumulator -= DT;
@@ -771,25 +947,43 @@ function frame(timestamp) {
       recordPhysicsData();
     }
 
-    if (steps === 30) {
+    // Avoid an unlimited backlog of physics steps.
+    if (
+      steps === MAX_STEPS_PER_FRAME &&
+      accumulator >= DT
+    ) {
+      discardedSeconds += accumulator / speed;
       accumulator = 0;
+    }
+
+    if (discardedSeconds > 0) {
+      performanceData.droppedFrames++;
+      performanceData.droppedTime += discardedSeconds;
     }
   }
 
-  physicsMs = performance.now() - physicsStart;
+  performanceData.stepsLastFrame = steps;
 
-  // Rendering
+  physicsMs =
+    performance.now() - physicsStart;
+
+  // ========================================
+  // RENDERING
+  // ========================================
+
   const renderStart = performance.now();
 
   renderer.draw(world);
   interactions.drawOverlay();
 
-  // Pointer coordinates
   if (pointer.active && renderer.camera) {
     const ctx = canvas.getContext('2d');
 
-    const px = renderer.camera.toScreenX(pointer.x);
-    const py = renderer.camera.toScreenY(pointer.y);
+    const px =
+      renderer.camera.toScreenX(pointer.x);
+
+    const py =
+      renderer.camera.toScreenY(pointer.y);
 
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1.5;
@@ -806,7 +1000,8 @@ function frame(timestamp) {
     ctx.textAlign = 'left';
 
     ctx.fillText(
-      `Cursor: (${pointer.x.toFixed(2)}, ${pointer.y.toFixed(2)}) m`,
+      `Cursor: (${pointer.x.toFixed(2)}, ` +
+      `${pointer.y.toFixed(2)}) m`,
       15,
       canvas.height - 15
     );
@@ -816,9 +1011,18 @@ function frame(timestamp) {
     energyChart.draw();
   }
 
-  renderMs = performance.now() - renderStart;
+  renderMs =
+    performance.now() - renderStart;
 
-  hud.update(world, fps, physicsMs, renderMs);
+  hud.update(
+    world,
+    fps,
+    physicsMs,
+    renderMs,
+    performanceData
+  );
+
+  showPerformanceWarning();
 
   requestAnimationFrame(frame);
 }
@@ -828,8 +1032,12 @@ function frame(timestamp) {
 // ==========================================
 
 gravityInput.addEventListener('input', () => {
-  const value = parseFloat(gravityInput.value);
-  gravityLabel.textContent = value.toFixed(2);
+  const value = parseFloat(
+    gravityInput.value
+  );
+
+  gravityLabel.textContent =
+    value.toFixed(2);
 
   for (const force of world.forces) {
     if (force instanceof NewtonGravity) {
@@ -845,8 +1053,12 @@ gravityInput.addEventListener('input', () => {
 // ==========================================
 
 stiffnessInput.addEventListener('input', () => {
-  const k = parseFloat(stiffnessInput.value);
-  stiffnessLabel.textContent = `${k} N/m`;
+  const k = parseFloat(
+    stiffnessInput.value
+  );
+
+  stiffnessLabel.textContent =
+    `${k} N/m`;
 
   for (const force of world.forces) {
     if (force instanceof Spring) {
@@ -858,12 +1070,18 @@ stiffnessInput.addEventListener('input', () => {
 });
 
 // ==========================================
-// HTML CONTROLS
+// INTERFACE EVENTS
 // ==========================================
 
-sceneSelect.addEventListener('change', reset);
+sceneSelect.addEventListener(
+  'change',
+  reset
+);
 
-integratorSelect.addEventListener('change', reset);
+integratorSelect.addEventListener(
+  'change',
+  reset
+);
 
 countInput.addEventListener('input', () => {
   countLabel.textContent = countInput.value;
@@ -871,20 +1089,31 @@ countInput.addEventListener('input', () => {
 });
 
 restitutionInput.addEventListener('input', () => {
-  const e = parseFloat(restitutionInput.value);
+  const e = parseFloat(
+    restitutionInput.value
+  );
+
   restLabel.textContent = e.toFixed(2);
-  world.restitution = e;
+
+  if (!world.conservativeMode) {
+    world.restitution = e;
+  }
 });
 
 speedInput.addEventListener('input', () => {
   setSpeed(parseFloat(speedInput.value));
 });
 
-document.querySelector('#reset').addEventListener('click', reset);
+document.querySelector('#reset')
+  .addEventListener('click', reset);
 
-pauseButton.addEventListener('click', togglePause);
+pauseButton.addEventListener(
+  'click',
+  togglePause
+);
 
-document.querySelector('#step').addEventListener('click', singleStep);
+document.querySelector('#step')
+  .addEventListener('click', singleStep);
 
 guardInput.addEventListener('change', () => {
   if (sceneSelect.value === 'jitter') {
@@ -892,19 +1121,28 @@ guardInput.addEventListener('change', () => {
   }
 });
 
-// Conservative test mode
-conservativeInput.addEventListener('change', () => {
-  world.setConservativeMode(conservativeInput.checked);
+// ==========================================
+// CONSERVATIVE MODE
+// ==========================================
 
-  updateSceneControls();
-  resetMeasurements();
+conservativeInput.addEventListener(
+  'change',
+  () => {
+    // Rebuild the scene to create a clean
+    // initial condition for each test mode.
+    reset();
 
-  status.textContent = conservativeInput.checked
-    ? 'Conservative test mode enabled'
-    : 'Normal collision physics restored';
-});
+    status.textContent =
+      conservativeInput.checked
+        ? 'Conservative test mode enabled. Scene reset.'
+        : 'Normal collision mode restored. Scene reset.';
+  }
+);
 
-// Debug HUD
+// ==========================================
+// DEBUG MODE
+// ==========================================
+
 debugInput.addEventListener('change', () => {
   hud.setDebug(debugInput.checked);
 });
@@ -913,45 +1151,57 @@ debugInput.addEventListener('change', () => {
 // MEASUREMENT REPORT
 // ==========================================
 
-document.querySelector('#report').addEventListener('click', () => {
-  const momentum = world.totalMomentum();
+document.querySelector('#report')
+  .addEventListener('click', () => {
+    const momentum = world.totalMomentum();
 
-  const maxSpeed = Math.max(
-    0,
-    ...world.bodies.map(body =>
-      Math.hypot(body.vel.x, body.vel.y)
-    )
-  );
+    const maxSpeed = Math.max(
+      0,
+      ...world.bodies.map(body =>
+        Math.hypot(
+          body.vel.x,
+          body.vel.y
+        )
+      )
+    );
 
-  console.table({
-    scene: sceneSelect.value,
-    time: world.time,
-    bodies: world.bodies.length,
-    timestep: DT,
-    contactIterations: world.contactIterations,
-    conservativeMode: world.conservativeMode,
-    energy: world.totalEnergy(),
-    initialEnergy: hud.initialEnergy,
-    momentumX: momentum.x,
-    momentumY: momentum.y,
-    momentumMagnitude: momentum.magnitude,
-    angularMomentum: world.totalAngularMomentum(),
-    maxSpeed,
-    shotsFired,
-    fps,
-    physicsMs,
-    renderMs
-  });
+    console.table({
+      scene: sceneSelect.value,
+      simulationTime: world.time,
+      bodies: world.bodies.length,
+      timestep: DT,
+      contactIterations: world.contactIterations,
+      conservativeMode: world.conservativeMode,
+      energy: world.totalEnergy(),
+      baselineEnergy: hud.initialEnergy,
+      momentumX: momentum.x,
+      momentumY: momentum.y,
+      momentumMagnitude: momentum.magnitude,
+      angularMomentum: world.totalAngularMomentum(),
+      maxSpeed,
+      shotsFired,
+      fps,
+      lastFrameMs:
+        performanceData.lastFrameMs,
+      physicsMs,
+      renderMs,
+      cappedFrames:
+        performanceData.droppedFrames,
+      discardedRealTimeSeconds:
+        performanceData.droppedTime
+    });
 
-  status.textContent = 'Measurements logged to Console (F12)';
-});
+    status.textContent =
+      'Measurements logged to Console (F12)';
+  }
+);
 
 // ==========================================
 // KEYBOARD SHORTCUTS
 // ==========================================
 
 window.addEventListener('keydown', event => {
-  const tag = event.target.tagName;
+  const tag = event.target?.tagName;
 
   if (
     tag === 'INPUT' ||
@@ -964,6 +1214,8 @@ window.addEventListener('keydown', event => {
   ) {
     return;
   }
+
+  if (event.repeat) return;
 
   if (event.code === 'Space') {
     event.preventDefault();
@@ -980,7 +1232,10 @@ window.addEventListener('keydown', event => {
     reset();
   }
 
-  if (event.key === '+' || event.key === '=') {
+  if (
+    event.key === '+' ||
+    event.key === '='
+  ) {
     event.preventDefault();
     setSpeed(speed + 0.25);
   }
@@ -1029,7 +1284,10 @@ function resizeCanvas() {
   }
 }
 
-window.addEventListener('resize', resizeCanvas);
+window.addEventListener(
+  'resize',
+  resizeCanvas
+);
 
 // ==========================================
 // START SIMULATION
@@ -1038,10 +1296,12 @@ window.addEventListener('resize', resizeCanvas);
 countLabel.textContent = countInput.value;
 
 restLabel.textContent =
-  parseFloat(restitutionInput.value).toFixed(2);
+  parseFloat(restitutionInput.value)
+    .toFixed(2);
 
 gravityLabel.textContent =
-  parseFloat(gravityInput.value).toFixed(2);
+  parseFloat(gravityInput.value)
+    .toFixed(2);
 
 stiffnessLabel.textContent =
   `${parseFloat(stiffnessInput.value)} N/m`;
@@ -1049,9 +1309,10 @@ stiffnessLabel.textContent =
 setSpeed(1);
 reset();
 
-// Respect reduced-motion preferences.
 if (
-  window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  window.matchMedia(
+    '(prefers-reduced-motion: reduce)'
+  ).matches
 ) {
   paused = true;
   pauseButton.textContent = 'Resume';

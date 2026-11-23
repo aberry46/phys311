@@ -5,16 +5,11 @@
 //
 
 export class HUD {
-
   constructor(element) {
-
     this.element = element;
-
     this.initialEnergy = null;
-
     this.energyTolerance = 1.0;
 
-    // Enable debug mode using ?debug=1
     const params = new URLSearchParams(
       window.location.search
     );
@@ -22,30 +17,19 @@ export class HUD {
     this.debug = params.get('debug') === '1';
   }
 
-  // ========================================
-  // RESET ENERGY BASELINE
-  // ========================================
+  // ==========================================
+  // ENERGY BASELINE
+  // ==========================================
 
   reset(world) {
-
     this.initialEnergy = world.totalEnergy();
   }
 
-  // ========================================
-  // DEBUG MODE CONTROL
-  // ========================================
-
   setDebug(enabled) {
-
     this.debug = Boolean(enabled);
   }
 
-  // ========================================
-  // ENERGY DRIFT
-  // ========================================
-
   energyDrift(energy) {
-
     if (
       this.initialEnergy === null ||
       Math.abs(this.initialEnergy) < 1e-12
@@ -54,24 +38,23 @@ export class HUD {
     }
 
     return (
-
-      100 *
-
-      (energy - this.initialEnergy) /
-
+      100 * (energy - this.initialEnergy) /
       Math.abs(this.initialEnergy)
-
     );
   }
 
-  // ========================================
-  // UPDATE HUD
-  // ========================================
+  // ==========================================
+  // HUD UPDATE
+  // ==========================================
 
-  update(world, fps, physicsMs, renderMs) {
-
+  update(
+    world,
+    fps,
+    physicsMs,
+    renderMs,
+    performanceData = {}
+  ) {
     if (this.initialEnergy === null) {
-
       this.reset(world);
     }
 
@@ -79,239 +62,219 @@ export class HUD {
 
     const E = data.energy;
     const p = data.momentum;
+    const conservative = data.conservativeMode;
 
     const drift = this.energyDrift(E);
 
     const driftText = drift === null
-
       ? 'N/A'
-
-      : `${drift.toFixed(4)}%`;
+      : `${drift >= 0 ? '+' : ''}${drift.toFixed(4)}%`;
 
     const driftExceeded =
-
       drift !== null &&
-
       Math.abs(drift) > this.energyTolerance;
 
     const targets = world.targetStatus();
 
-    // ======================================
-    // STANDARD GAMEPLAY HUD
-    // ======================================
+    const droppedTime =
+      performanceData.droppedTime ?? 0;
+
+    const droppedFrames =
+      performanceData.droppedFrames ?? 0;
+
+    const lastFrameMs =
+      performanceData.lastFrameMs ?? 0;
+
+    const stepsLastFrame =
+      performanceData.stepsLastFrame ?? 0;
+
+    // ========================================
+    // BASIC HUD
+    // ========================================
 
     const lines = [
-
       'SIMULATION STATUS',
-
       '------------------------------',
-
       `Time: ${data.time.toFixed(2)} s`,
-
       `Bodies: ${data.bodyCount}`,
-
-      `FPS: ${fps.toFixed(0)}`,
-
+      `FPS: ${fps.toFixed(1)}`,
       `Energy: ${E.toFixed(5)} J`,
-
       `Momentum: ${p.magnitude.toFixed(5)} kg m/s`
-
     ];
 
-    // ======================================
-    // TARGET INFORMATION
-    // ======================================
+    // ========================================
+    // TARGET STATUS
+    // ========================================
 
     if (targets.total > 0) {
-
       lines.push(
-
         '',
-
         'TARGET STATUS',
-
         '------------------------------',
-
         `Destroyed: ${targets.hit}/${targets.total}`,
-
         `Remaining: ${targets.remaining}`
-
       );
 
       if (targets.complete) {
-
         lines.push('ALL TARGETS DESTROYED');
       }
     }
 
-    // ======================================
-    // PHYSICS TEST MODE
-    // ======================================
+    // ========================================
+    // PHYSICS MODE
+    // ========================================
 
     lines.push(
-
       '',
-
-      `Mode: ${
-        data.conservativeMode
-          ? 'CONSERVATIVE'
-          : 'NORMAL'
-      }`
-
+      `Mode: ${conservative ? 'CONSERVATIVE' : 'NORMAL'}`
     );
 
-    // ======================================
-    // DETAILED DEBUG DIAGNOSTICS
-    // ======================================
+    // ========================================
+    // ENERGY INTERPRETATION
+    // ========================================
 
-    if (this.debug) {
-
+    if (conservative) {
       lines.push(
-
         '',
-
-        'DEBUG PHYSICS DIAGNOSTICS',
-
+        'CONSERVATION TEST',
         '------------------------------',
-
-        `DT: ${data.timestep.toFixed(6)} s`,
-
-        `Physics steps: ${data.stepCount}`,
-
-        `Contact iterations: ${data.contactIterations}`,
-
-        '',
-
-        'ENERGY',
-
-        '------------------------------',
-
-        `Initial energy: ${this.initialEnergy.toFixed(5)} J`,
-
-        `Total energy: ${E.toFixed(5)} J`,
-
-        `Translational KE: ${data.translationalEnergy.toFixed(5)} J`,
-
-        `Rotational KE: ${data.rotationalEnergy.toFixed(5)} J`,
-
-        `Potential energy: ${data.potentialEnergy.toFixed(5)} J`,
-
-        '',
-
-        'MOMENTUM',
-
-        '------------------------------',
-
-        `px: ${p.x.toFixed(5)} kg m/s`,
-
-        `py: ${p.y.toFixed(5)} kg m/s`,
-
-        `|p|: ${p.magnitude.toFixed(5)} kg m/s`,
-
-        `Angular momentum: ${data.angularMomentum.toFixed(5)} kg m²/s`,
-
-        '',
-
-        'COLLISION DIAGNOSTICS',
-
-        '------------------------------',
-
-        `Contacts this step: ${data.contactsThisStep}`,
-
-        `Total contacts: ${data.totalContacts}`,
-
-        `Peak contacts: ${data.peakContacts}`,
-
-        `Restitution: ${
-          data.conservativeMode
-            ? '1.00'
-            : data.restitution.toFixed(2)
-        }`,
-
-        '',
-
-        'BODY DIAGNOSTICS',
-
-        '------------------------------',
-
-        `Total bodies: ${data.bodyCount}`,
-
-        `Dynamic bodies: ${data.dynamicBodies}`,
-
-        `Max speed: ${data.maxSpeed.toFixed(4)} m/s`,
-
-        `Max angular speed: ${data.maxAngularSpeed.toFixed(4)} rad/s`,
-
-        '',
-
-        'PERFORMANCE',
-
-        '------------------------------',
-
-        `FPS: ${fps.toFixed(0)}`,
-
-        `Physics: ${physicsMs.toFixed(3)} ms`,
-
-        `Rendering: ${renderMs.toFixed(3)} ms`
-
+        'Restitution: 1.00',
+        'Collision friction: disabled',
+        'Mechanical energy should remain',
+        'approximately constant.'
       );
-
     } else {
-
       lines.push(
-
         '',
-
-        'Add ?debug=1 to the URL',
-
-        'for detailed diagnostics.'
-
+        'NORMAL GAMEPLAY',
+        '------------------------------',
+        'Inelastic collisions and friction',
+        'can dissipate mechanical energy.'
       );
     }
 
-    // ======================================
-    // DISPLAY HUD
-    // ======================================
+    // ========================================
+    // DEBUG DIAGNOSTICS
+    // ========================================
 
-    const documentRef =
-      this.element.ownerDocument;
+    if (this.debug) {
+      lines.push(
+        '',
+        'DEBUG PHYSICS DIAGNOSTICS',
+        '------------------------------',
+        `DT: ${data.timestep.toFixed(6)} s`,
+        `Physics steps: ${data.stepCount}`,
+        `Contact iterations: ${data.contactIterations}`,
 
-    const content =
-      documentRef.createDocumentFragment();
+        '',
+        'ENERGY',
+        '------------------------------',
+        `Baseline: ${this.initialEnergy.toFixed(5)} J`,
+        `Total: ${E.toFixed(5)} J`,
+        `Translational KE: ${data.translationalEnergy.toFixed(5)} J`,
+        `Rotational KE: ${data.rotationalEnergy.toFixed(5)} J`,
+        `Potential: ${data.potentialEnergy.toFixed(5)} J`,
 
-    content.appendChild(
+        '',
+        'MOMENTUM',
+        '------------------------------',
+        `px: ${p.x.toFixed(5)} kg m/s`,
+        `py: ${p.y.toFixed(5)} kg m/s`,
+        `|p|: ${p.magnitude.toFixed(5)} kg m/s`,
+        `Angular momentum: ${data.angularMomentum.toFixed(5)} kg m²/s`,
 
-      documentRef.createTextNode(
+        '',
+        'COLLISIONS',
+        '------------------------------',
+        `Impulses this step: ${data.contactsThisStep}`,
+        `Total recorded impulses: ${data.totalContacts}`,
+        `Peak per step: ${data.peakContacts}`,
+        `Restitution: ${conservative
+          ? '1.00'
+          : data.restitution.toFixed(2)}`,
 
-        lines.join('\n') + '\n'
+        '',
+        'BODIES',
+        '------------------------------',
+        `Dynamic bodies: ${data.dynamicBodies}`,
+        `Maximum speed: ${data.maxSpeed.toFixed(4)} m/s`,
+        `Maximum angular speed: ${data.maxAngularSpeed.toFixed(4)} rad/s`,
 
-      )
+        '',
+        'PERFORMANCE',
+        '------------------------------',
+        `FPS: ${fps.toFixed(1)}`,
+        `Last frame: ${lastFrameMs.toFixed(2)} ms`,
+        `Physics computation: ${physicsMs.toFixed(3)} ms`,
+        `Rendering computation: ${renderMs.toFixed(3)} ms`,
+        `Physics steps/frame: ${stepsLastFrame}`,
+        `Capped frames: ${droppedFrames}`,
+        `Discarded real time: ${droppedTime.toFixed(3)} s`
+      );
 
+      if (Number.isFinite(world.lastCollisionEnergyChange)) {
+        lines.push(
+          '',
+          'LAST COLLISION STEP',
+          '------------------------------',
+          `Net energy change: ${world.lastCollisionEnergyChange.toExponential(3)} J`,
+          `KE change: ${(world.lastCollisionKineticChange ?? 0).toExponential(3)} J`,
+          `PE change: ${(world.lastCollisionPotentialChange ?? 0).toExponential(3)} J`
+        );
+      }
+    } else {
+      lines.push(
+        '',
+        'Enable Detailed Debug HUD',
+        'for additional physics measurements.'
+      );
+    }
+
+    // ========================================
+    // SAFE DOM RENDERING
+    // ========================================
+
+    const doc = this.element.ownerDocument;
+    const fragment = doc.createDocumentFragment();
+
+    const bodyText = doc.createTextNode(
+      lines.join('\n') + '\n\n'
     );
 
-    // ======================================
-    // COLOR-CODED ENERGY DRIFT
-    // ======================================
+    fragment.appendChild(bodyText);
 
-    const driftLine =
-      documentRef.createElement('span');
+    const energyLine = doc.createElement('span');
 
-    driftLine.textContent =
+    if (conservative) {
+      energyLine.textContent =
+        `Energy drift: ${driftText}\n` +
+        `Tolerance: ±${this.energyTolerance.toFixed(2)}%`;
 
-      `\nEnergy drift: ${driftText}\n` +
+      energyLine.style.color = driftExceeded
+        ? '#f87171'
+        : '#4ade80';
+    } else {
+      energyLine.textContent =
+        `Mechanical energy change: ${driftText}\n` +
+        `Baseline resets after launches or removals.`;
 
-      `Tolerance: ±${this.energyTolerance.toFixed(2)}%`;
+      energyLine.style.color = '#93c5fd';
+    }
 
-    driftLine.style.color = driftExceeded
+    fragment.appendChild(energyLine);
 
-      ? '#f87171'
+    if (droppedTime > 0 && this.debug) {
+      const warning = doc.createElement('span');
 
-      : '#4ade80';
+      warning.textContent =
+        '\n\nSome elapsed time was discarded ' +
+        'to prevent unstable catch-up.';
 
-    content.appendChild(driftLine);
+      warning.style.color = '#facc15';
+      fragment.appendChild(warning);
+    }
 
     this.element.style.color = '#d1fae5';
-
-    this.element.replaceChildren(content);
+    this.element.replaceChildren(fragment);
   }
 }
