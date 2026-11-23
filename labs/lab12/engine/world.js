@@ -188,18 +188,47 @@ export class World {
 
     );
 
-    for (
+    let collisionEnergyChange = 0;
+    let collisionKineticChange = 0;
+    let collisionPotentialChange = 0;
 
-      let i = 0;
+    for (let i = 0; i < iterations; i++) {
 
-      i < iterations;
+      const kineticBefore =
+        this.totalTranslationalEnergy() +
+        this.totalRotationalEnergy();
 
-      i++
-
-    ) {
+      const potentialBefore =
+        this.totalPotentialEnergy();
 
       resolveCollisions(this);
+
+      const kineticAfter =
+        this.totalTranslationalEnergy() +
+        this.totalRotationalEnergy();
+
+      const potentialAfter =
+        this.totalPotentialEnergy();
+
+      collisionKineticChange +=
+        kineticAfter - kineticBefore;
+
+      collisionPotentialChange +=
+        potentialAfter - potentialBefore;
     }
+
+    collisionEnergyChange =
+      collisionKineticChange +
+      collisionPotentialChange;
+
+    this.lastCollisionEnergyChange =
+      collisionEnergyChange;
+
+    this.lastCollisionKineticChange =
+      collisionKineticChange;
+
+    this.lastCollisionPotentialChange =
+      collisionPotentialChange;
 
     // Update collision diagnostics.
 

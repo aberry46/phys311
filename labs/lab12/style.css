@@ -216,3 +216,72 @@ canvas {
     transition-duration: 0.01ms !important;
   }
 }
+
+
+/* ==========================================
+   WEEK 12: INTERFACE IMPROVEMENTS
+   ========================================== */
+
+/* Make inactive scene controls clearly distinguishable */
+.controls input:disabled,
+.controls select:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.controls label:has(input:disabled) {
+  opacity: 0.5;
+}
+
+/* Improve checkbox readability */
+.controls input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+}
+
+.controls label {
+  transition: opacity 0.15s ease;
+}
+
+/* Make diagnostic settings easier to identify */
+label[for="conservative"],
+label[for="debug"] {
+  background: #1e293b;
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+label[for="conservative"]:has(input:checked),
+label[for="debug"]:has(input:checked) {
+  border-color: #38bdf8;
+  background: #164e63;
+}
+
+/* CPU throttling and performance warnings */
+#performance-warning {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #f59e0b;
+  border-radius: 6px;
+  background: #451a03;
+  color: #fcd34d;
+  font-size: 13px;
+}
+
+#performance-warning[hidden] {
+  display: none;
+}
+
+/* Improve small-screen control spacing */
+@media (max-width: 700px) {
+  .controls {
+    gap: 10px;
+  }
+
+  label[for="conservative"],
+  label[for="debug"] {
+    width: 100%;
+  }
+}

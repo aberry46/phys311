@@ -755,8 +755,12 @@ export function resolveRectangleRectangle(
   // POSITIONAL CORRECTION
   // ========================================
 
-  const slop = 0.001;
-  const percent = 0.5;
+  const conservative =
+    world?.conservativeMode === true;
+
+  const slop = conservative ? 0.002 : 0.001;
+
+  const percent = conservative ? 0.25 : 0.5;
 
   const correction =
 
@@ -824,7 +828,16 @@ export function resolveGround(
       return false;
     }
 
-    body.pos.y += groundY - bottom;
+    const penetration = groundY - bottom;
+
+    // Allow a small tolerance in conservative mode.
+    // Normal gameplay retains full correction.
+    const slop = conservative ? 0.0005 : 0;
+
+    body.pos.y += Math.max(
+      0,
+      penetration - slop
+    );
 
     if (body.vel.y < 0) {
 
@@ -893,10 +906,17 @@ export function resolveGround(
   }
 
   // Correct ground penetration.
-
+  
   const penetration = groundY - lowestY;
 
-  body.pos.y += penetration;
+  // Avoid correcting extremely small penetrations
+  // during conservative resting contact.
+  const slop = conservative ? 0.0005 : 0;
+
+  body.pos.y += Math.max(
+    0,
+    penetration - slop
+  );
 
   // Identify contact corners.
 
