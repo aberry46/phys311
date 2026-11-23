@@ -1,7 +1,7 @@
 # PHYS 311 | Slingshot Destruction Decision Log
 
 **Week 12 Build Sprint**  
-**Source Directory:** `labs/lab12/`
+**Source Directory:** `project/`
 
 ## Decision 1: Keep the existing modular physics engine
 

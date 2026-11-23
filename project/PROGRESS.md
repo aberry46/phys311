@@ -1,9 +1,9 @@
 # PHYS 311 | Week 12 Progress Log
 
 **Project:** Slingshot Destruction  
-**Live URL:** https://aberry46.github.io/phys311/labs/lab12/index.html  
-**Source:** https://github.com/aberry46/phys311/tree/main/labs/lab12  
-**Implementation location:** `labs/lab12/`
+**Live URL:** https://aberry46.github.io/phys311/project/index.html  
+**Source:** https://github.com/aberry46/phys311/tree/main/project  
+**Implementation location:** `project/`
 
 ## Part A: MUST-Tier Status
 
@@ -15,7 +15,8 @@
 | Circle-to-rectangle and rectangle-to-rectangle collisions | Complete | Impulse solver and isolated collision validation |
 | Ground contact and collapsible structure | Complete, with limitations | Blocks rest and collapse; contact stabilization tested quantitatively |
 | Target detection and reliable scene reset | Complete | Both targets destroyed during browser testing; reset recreates world and energy baseline |
-| Running browser interface and GitHub Pages deployment | Existing live page verified previously; updated local build needs push | Source is in `labs/lab12/`; verify the new version after deployment |
+| Running browser interface and GitHub Pages deployment | Complete in repository; live deployment pending verification | Updated source and documentation are committed to `main` under `project/`. The new GitHub Pages URL requires a final browser check. |
+
 
 The simulation uses a fixed physics timestep of **1/240 s** and **four collision-resolution iterations** in the slingshot scene. A frame-time cap and maximum catch-up step count prevent unbounded work under throttling. This protects numerical step size but can cause simulated time to fall behind wall-clock time.
 
@@ -89,3 +90,4 @@ See `DECISIONS.md` for each **Planned / Did / Why** decision. The main tradeoff 
 
 1. Validate gameplay and contact stability across additional launch angles, block arrangements, longer runs, and devices.
 2. Refine UI polish and communicate conservative-mode limitations clearly, including normal-mode energy dissipation and dropped real time.
+3. Package final screenshots, test output, final report, and reproducible instructions; verify the deployed GitHub Pages simulation at `https://aberry46.github.io/phys311/project/index.html`.

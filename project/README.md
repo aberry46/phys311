@@ -2,8 +2,8 @@
 
 **PHYS 311 Final Project | Interactive Rigid-Body Physics**
 
-**Live simulation:** https://aberry46.github.io/phys311/labs/lab12/index.html  
-**Source:** https://github.com/aberry46/phys311/tree/main/labs/lab12
+**Live simulation:** https://aberry46.github.io/phys311/project/index.html  
+**Source:** https://github.com/aberry46/phys311/tree/main/project
 
 ## Overview
 
@@ -42,16 +42,16 @@ The UI also offers Billiards, Jitter Guard Test, N-Body Gravity, and Spring Netw
 
 ## Run Locally
 
-Serve the `labs/lab12` directory with VS Code Live Server, then open `index.html`. JavaScript modules require an HTTP server; opening the file directly may not work in all browsers.
+Serve the `project/` directory using VS Code Live Server, then open `index.html`. JavaScript modules require an HTTP server; opening the HTML file directly may not work in all browsers.
 
-Run the numerical tests in a terminal from `labs/lab12`:
+Run the numerical tests in a terminal from `project/`:
 
 ```bash
 node validation.js
 node contact-diagnostics.js
 ```
 
-`validation.js` runs the original five validation experiments and seven checks. `contact-diagnostics.js` runs a separate 10-second, three-block resting-contact matrix over timestep, iteration count, and conservative/normal modes.
+`validation.js` runs five experiments containing seven validation checks. `contact-diagnostics.js` runs a separate 10-second, three-block resting-contact experiment across different timesteps, collision iteration counts, and physics modes.
 
 ## Numerical Validation
 
